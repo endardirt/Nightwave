@@ -47,3 +47,6 @@ main{max-width:1450px;margin:0 auto;padding:0 5.2vw}.hero{min-height:440px;displ
 .player-dialog.image-mode .player-controls,.player-dialog.image-mode .player-hints{display:none!important}
 .player-dialog.image-mode .player-shell{min-height:180px;max-height:65vh;aspect-ratio:auto;height:min(65vh,720px)}
 .player-dialog.image-mode .player-top{display:flex}
+/* Keep the watch-history delete control reliably clickable above card content. */
+.history-card .remove-history{z-index:20;pointer-events:auto;cursor:pointer;opacity:1;touch-action:manipulation}
+.history-card .thumb-wrap,.history-card .thumb-overlay{pointer-events:none}

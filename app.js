@@ -87,7 +87,8 @@
   }
   function thumbnailUrl(post, base) {
     // Prefer explicit preview fields, then fall back to an image attachment.
-    let path = post.file && (post.file.path || post.file.url) || post.thumbnail || post.thumbnail_url || post.image || post.image_url || post.preview;
+    const nested = post.data && typeof post.data === "object" ? post.data : {};
+    let path = (post.file && (post.file.path || post.file.url)) || (nested.file && (nested.file.path || nested.file.url)) || post.thumbnail || post.thumbnail_url || post.image || post.image_url || post.preview || nested.thumbnail || nested.thumbnail_url || nested.image || nested.image_url;
     if (!path && Array.isArray(post.attachments)) {
       const imageAttachment = post.attachments.find(a => {
         if (typeof a === "string") return /\.(png|jpe?g|gif|webp|avif)(?:$|[?#])/i.test(a);
@@ -198,6 +199,14 @@
     els.noResults.hidden = posts.length === 0 || filtered.length > 0;
     els.toolbar.hidden = posts.length === 0;
   }
+  // Delegate history deletion from the grid in capture phase so it cannot bubble to a card opener.
+  els.historyGrid.addEventListener("click", e => {
+    const button = e.target && e.target.closest ? e.target.closest("button.remove-history") : null;
+    if (!button) return;
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    const key = button.dataset.historyKey;
+    if (key) removeHistory(key);
+  }, true);
   function renderHistory() {
     const history = getHistory(); els.historyGrid.replaceChildren();
     const historyPosts = history.map(item => ({...item, id:item.id || item.key, title:item.title || "Untitled video", description:item.description || "", published:item.published || "", thumbnail:item.thumbnail || "", videoUrl:item.videoUrl || "", hasVideo:!!item.videoUrl, tags:""})).filter(p=>p.videoUrl);
@@ -207,14 +216,7 @@
       const item = getHistoryItem(post) || history.find(x=>x.key===postKey(post));
       const card = document.createElement("article"); card.className="history-card"; card.tabIndex=0; card.setAttribute("role","button");
       const remove = document.createElement("button"); remove.className="remove-history"; remove.type="button"; remove.textContent="×"; remove.setAttribute("aria-label","Remove from watch history");
-      // Capture the delete click before the card's open handler can see it.
-      remove.addEventListener("click",e=>{
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        const keyToRemove = item && item.key;
-        if (keyToRemove) removeHistory(keyToRemove);
-        else { saveHistory(getHistory().filter(x => x.key !== postKey(post) && x.videoUrl !== post.videoUrl)); }
-        renderHistory();
-      }, true);
+      remove.dataset.historyKey = item && item.key ? item.key : (post.key || postKey(post));
       card.appendChild(remove); card.appendChild(createThumb(post,item));
       const info=document.createElement("div");info.className="history-info";
       const title=document.createElement("h3");title.className="card-title";title.textContent=post.title;info.appendChild(title);
@@ -301,7 +303,7 @@
   function openPostViewer(post) {
     els.playerDialog.classList.add("image-mode");
     currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
-    destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.hidden=true; els.postImage.hidden=false; els.postImage.src=post.thumbnail || ""; els.postImage.alt=post.title; els.playerLoading.hidden=true; els.playerError.hidden=!post.thumbnail; if(!post.thumbnail){els.playerError.textContent="This post has no image attached.";els.playerError.hidden=false;}
+    destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.hidden=true; els.postImage.hidden=false; els.postImage.src=post.thumbnail || ""; els.postImage.alt=post.title; els.playerLoading.hidden=true; els.playerError.hidden=true;
   }
   function openPlayer(post) {
     if(!post.videoUrl){openPostViewer(post);return;}

@@ -8,7 +8,7 @@
     sort:$("sortSelect"), grid:$("videoGrid"), empty:$("emptyState"), noResults:$("noResults"),
     resultCount:$("resultCount"), historySection:$("history"), historyGrid:$("historyGrid"),
     historyCount:$("historyCount"), clearHistory:$("clearHistoryBtn"), modal:$("playerModal"),
-    playerShell:$("playerShell"), video:$("video"), playerTitle:$("playerTitle"),
+    playerShell:$("playerShell"), playerDialog:$("playerModal").querySelector(".player-dialog"), video:$("video"), playerTitle:$("playerTitle"),
     playerDescription:$("playerDescription"), playerDate:$("playerDate"), playerLoading:$("playerLoading"),
     playerError:$("playerError"), playBtn:$("playBtn"), backBtn:$("backBtn"), forwardBtn:$("forwardBtn"),
     timeline:$("timelineTrack"), timelineFill:$("timelineFill"), timelineKnob:$("timelineKnob"),
@@ -17,6 +17,7 @@
   };
   const HISTORY_KEY = "nightwave.watchHistory.v1";
   const LAST_API_KEY = "nightwave.lastApiUrl.v1";
+  const LIBRARY_KEY = "nightwave.library.v1";
   const MAX_HISTORY = 30;
   let posts = [], lastApiUrl = "", currentPost = null, hls = null, loadToken = 0;
   let seekDrag = false, holdTimer = null, holdingFast = false, spaceDown = false, spaceHoldTimer = null;
@@ -31,6 +32,21 @@
     try { const parsed = JSON.parse(safeStorageGet(HISTORY_KEY, "[]")); return Array.isArray(parsed) ? parsed.filter(x => x && typeof x.key === "string") : []; } catch { return []; }
   }
   function saveHistory(history) { safeStorageSet(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY))); renderHistory(); }
+  function persistLibrary() {
+    const clean = posts.map(({raw, ...post}) => post);
+    safeStorageSet(LIBRARY_KEY, JSON.stringify(clean));
+  }
+  function mergePosts(incoming) {
+    const libraryKey = post => String(post.videoUrl || post.id || post.title || "post");
+    const merged = new Map(posts.map(post => [libraryKey(post), post]));
+    for (const post of incoming) {
+      const key = libraryKey(post);
+      const previous = merged.get(key);
+      merged.set(key, previous ? {...previous, ...post, thumbnail:post.thumbnail || previous.thumbnail, videoUrl:post.videoUrl || previous.videoUrl} : post);
+    }
+    posts = Array.from(merged.values());
+    persistLibrary();
+  }
   function postKey(post) { return String(post.id || post.videoUrl || post.title || "post"); }
   function getHistoryItem(post) { return getHistory().find(x => x.key === postKey(post)); }
   function updateHistory(post, patch) {
@@ -200,7 +216,7 @@
       // relative paths resolve against this page and may need to be made absolute.
       const base = lastApiUrl || els.apiUrl.value.trim() || window.location.href;
       const normalized = array.map((item, i) => normalizePost(item, i, base)).filter(Boolean);
-      posts = normalized;
+      mergePosts(normalized);
       renderPosts(); renderHistory();
       els.refreshBtn.disabled = !lastApiUrl;
       if (posts.length === 0) showNotice("Valid JSON loaded, but it contains an empty list. Check that the JSON includes posts/videos.", "error");
@@ -227,7 +243,7 @@
       const array=extractArray(json);
       const normalized=array.map((item,i)=>normalizePost(item,i,lastApiUrl)).filter(Boolean);
       if(token!==loadToken)return;
-      posts=normalized; renderPosts(); renderHistory(); els.refreshBtn.disabled=false;
+      mergePosts(normalized); renderPosts(); renderHistory(); els.refreshBtn.disabled=false;
       if(posts.length===0) showNotice("The API returned an empty list. Try refreshing later.", "");
       else showNotice(`Loaded ${posts.length} ${posts.length===1?"post":"posts"}. Posts without video attachments remain visible but cannot be played.`, "success");
     } catch(err) {
@@ -289,7 +305,7 @@
   function seekToPercent(percent){if(Number.isFinite(els.video.duration)&&els.video.duration>0)els.video.currentTime=Math.max(0,Math.min(els.video.duration,percent/100*els.video.duration));}
   function seekBy(seconds){if(els.video.readyState>0){const d=Number.isFinite(els.video.duration)?els.video.duration:Infinity;els.video.currentTime=Math.max(0,Math.min(d,els.video.currentTime+seconds));}}
   async function togglePlay(){if(els.video.paused){try{await els.video.play();}catch{els.playerError.textContent="Playback was blocked. Press play again, or check stream access.";els.playerError.hidden=false;}}else els.video.pause();}
-  async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else if(els.playerShell.requestFullscreen)await els.playerShell.requestFullscreen();else if(els.video.webkitEnterFullscreen)els.video.webkitEnterFullscreen();}catch{showNotice("Fullscreen is unavailable in this browser.","error");}}
+  async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else if(els.playerDialog?.requestFullscreen)await els.playerDialog.requestFullscreen();else if(els.video.webkitEnterFullscreen)els.video.webkitEnterFullscreen();}catch{showNotice("Fullscreen is unavailable in this browser.","error");}}
   function enableFast(){if(!els.video.paused&&!holdingFast){holdingFast=true;els.video.playbackRate=2;els.speedIndicator.classList.add("visible");}}
   function disableFast(){if(holdingFast){holdingFast=false;els.video.playbackRate=Number(els.speed.value)||1;els.speedIndicator.classList.remove("visible");}}
   els.apiForm.addEventListener("submit",e=>{e.preventDefault();loadFeed(els.apiUrl.value.trim());});
@@ -299,9 +315,22 @@
   els.clearHistory.addEventListener("click",()=>{if(confirm("Clear all locally saved watch history and resume positions?")){safeStorageSet(HISTORY_KEY,"[]");renderHistory();renderPosts();}});
   $("brandHome").addEventListener("click",e=>{e.preventDefault();window.scrollTo({top:0,behavior:"smooth"});});
   els.closePlayer.addEventListener("click",closePlayer);els.modal.querySelector("[data-close-player]").addEventListener("click",closePlayer);
+
+  els.video.addEventListener("click", e=>{e.preventDefault();togglePlay();});
+  els.video.addEventListener("dblclick", e=>{e.preventDefault();toggleFullscreen();});
+  let controlsHideTimer = null;
+  function revealFullscreenControls() {
+    if (!document.fullscreenElement || !els.playerDialog) return;
+    els.playerDialog.classList.add("controls-visible");
+    clearTimeout(controlsHideTimer);
+    if (!els.video.paused) controlsHideTimer = setTimeout(()=>els.playerDialog.classList.remove("controls-visible"), 2200);
+  }
+  els.playerDialog?.addEventListener("mousemove", revealFullscreenControls);
+  els.video.addEventListener("pause", ()=>{if(document.fullscreenElement) {clearTimeout(controlsHideTimer);els.playerDialog.classList.add("controls-visible");}});
+  els.video.addEventListener("play", revealFullscreenControls);
   els.playBtn.addEventListener("click",togglePlay);els.backBtn.addEventListener("click",()=>seekBy(-5));els.forwardBtn.addEventListener("click",()=>seekBy(5));els.fullscreenBtn.addEventListener("click",toggleFullscreen);
   els.speed.addEventListener("change",()=>{if(!holdingFast)els.video.playbackRate=Number(els.speed.value)||1;});
-  els.timeline.addEventListener("pointerdown",e=>{if(!Number.isFinite(els.video.duration)||els.video.duration<=0)return;seekDrag=true;els.timeline.setPointerCapture?.(e.pointerId);const update=ev=>{const r=els.timeline.getBoundingClientRect();seekToPercent((ev.clientX-r.left)/r.width*100);};update(e);const move=ev=>{if(seekDrag)update(ev);};const up=()=>{seekDrag=false;window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});});
+  els.timeline.addEventListener("pointerdown",e=>{if(!Number.isFinite(els.video.duration)||els.video.duration<=0)return;seekDrag=true;els.timeline.setPointerCapture?.(e.pointerId);const update=ev=>{const r=els.timeline.getBoundingClientRect();const pct=Math.max(0,Math.min(100,(ev.clientX-r.left)/r.width*100));els.timelineFill.style.width=`${pct}%`;els.timelineKnob.style.left=`${pct}%`;els.timeDisplay.textContent=`${formatTime(pct/100*els.video.duration)} / ${formatTime(els.video.duration)}`;seekToPercent(pct);};update(e);const move=ev=>{if(seekDrag)update(ev);};const up=()=>{seekDrag=false;window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});});
   els.timelineKnob.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"){e.preventDefault();seekBy(-5);}if(e.key==="ArrowRight"){e.preventDefault();seekBy(5);}});
   els.playerShell.addEventListener("mousedown",e=>{if(e.target===els.video){clearTimeout(holdTimer);holdTimer=setTimeout(enableFast,220);}});
   window.addEventListener("mouseup",()=>{clearTimeout(holdTimer);disableFast();});
@@ -312,12 +341,17 @@
     if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName))return;
     if(e.key==="Escape"){closePlayer();return;}
     if(e.code==="Space"){e.preventDefault();if(!spaceDown){spaceDown=true;spaceHoldTimer=setTimeout(()=>{if(spaceDown)enableFast();},220);}return;}
-    if(e.key==="ArrowLeft"){e.preventDefault();seekBy(-5);}else if(e.key==="ArrowRight"){e.preventDefault();seekBy(5);}else if(e.key.toLowerCase()==="f"){e.preventDefault();toggleFullscreen();}else if(/^[0-9]$/.test(e.key)){seekToPercent(Number(e.key)*10);}
+    if(e.key==="ArrowLeft"){e.preventDefault();seekBy(-5);}else if(e.key==="ArrowRight"){e.preventDefault();seekBy(5);}else if(e.key.toLowerCase()==="k"){e.preventDefault();togglePlay();}else if(e.key.toLowerCase()==="f"){e.preventDefault();toggleFullscreen();}else if(/^[0-9]$/.test(e.key)){seekToPercent(Number(e.key)*10);}
   });
   document.addEventListener("keyup",e=>{if(e.code==="Space"&&spaceDown){clearTimeout(spaceHoldTimer);spaceDown=false;if(holdingFast)disableFast();else togglePlay();}});
   document.addEventListener("visibilitychange",()=>{if(document.hidden)saveProgress();});
   window.addEventListener("pagehide",()=>saveProgress());
-  document.addEventListener("fullscreenchange",()=>{els.fullscreenBtn.textContent=document.fullscreenElement?"⛶":"⛶";});
+  document.addEventListener("fullscreenchange",()=>{
+    els.fullscreenBtn.textContent="⛶";
+    if(document.fullscreenElement===els.playerDialog){els.playerDialog.classList.add("controls-visible");revealFullscreenControls();}
+    else {clearTimeout(controlsHideTimer);els.playerDialog.classList.remove("controls-visible");}
+  });
+  try { const savedLibrary=JSON.parse(safeStorageGet(LIBRARY_KEY,"[]")); if(Array.isArray(savedLibrary)) posts=savedLibrary.filter(p=>p&&typeof p.title==="string"); } catch {}
   const savedUrl=safeStorageGet(LAST_API_KEY,"");
   if(savedUrl){els.apiUrl.value=savedUrl;lastApiUrl=savedUrl;loadFeed(savedUrl,{quiet:true});}
   renderHistory();renderPosts();

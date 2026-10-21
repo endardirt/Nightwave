@@ -62,3 +62,12 @@ Watch history, resume timestamps, and the last API URL are stored in this browse
 - Autoplay may be blocked by browser policy; press Play if playback does not start automatically.
 - Thumbnail extraction from a playing video is intentionally not attempted; the API-provided thumbnail is used.
 - `localStorage` has limited capacity and can be cleared by the browser.
+
+
+## Updated playback and library behavior
+
+- Click the video to pause or resume; double-click it to toggle fullscreen. Press **K** or **Space** to play/pause, use **←/→** to seek five seconds, and press **F** for fullscreen. Holding Space temporarily plays at 2× speed.
+- In fullscreen, move the mouse to reveal the controls and seekbar. The controls stay visible while paused. Drag the seekbar to scrub.
+- API and pasted-JSON loads append to the existing library, merging repeated items rather than clearing earlier results. The library is stored in browser `localStorage` and restored after refresh. The saved API URL is fetched again on reload to update the library.
+- The Continue Watching section uses the saved thumbnail URL when one is available. Thumbnails are displayed without requiring hover.
+- The library and watch history are local to this browser profile and are not synchronized between devices. If browser storage is cleared or full, persistence may fail.

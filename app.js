@@ -86,9 +86,20 @@
     return candidates.find(v => /\.(m3u8|mp4|webm|mov)(?:$|[?#])/i.test(v) || /m3u8|\/v\//i.test(v)) || candidates[0] || "";
   }
   function thumbnailUrl(post, base) {
-    const path = post.file && (post.file.path || post.file.url) || post.thumbnail || post.thumbnail_url || post.image || post.image_url || post.preview;
+    // Prefer explicit preview fields, then fall back to an image attachment.
+    let path = post.file && (post.file.path || post.file.url) || post.thumbnail || post.thumbnail_url || post.image || post.image_url || post.preview;
+    if (!path && Array.isArray(post.attachments)) {
+      const imageAttachment = post.attachments.find(a => {
+        if (typeof a === "string") return /\.(png|jpe?g|gif|webp|avif)(?:$|[?#])/i.test(a);
+        if (!a || typeof a !== "object") return false;
+        const candidate = a.url || a.src || a.href || a.download_url || a.temp_url || (a.file && (a.file.url || a.file.path));
+        const type = String(a.type || a.mime_type || a.content_type || (a.file && (a.file.type || a.file.mime_type)) || "");
+        return /^image\//i.test(type) || /\.(png|jpe?g|gif|webp|avif)(?:$|[?#])/i.test(String(candidate || ""));
+      });
+      if (imageAttachment) path = typeof imageAttachment === "string" ? imageAttachment : (imageAttachment.url || imageAttachment.src || imageAttachment.href || imageAttachment.download_url || imageAttachment.temp_url || (imageAttachment.file && (imageAttachment.file.url || imageAttachment.file.path)));
+    }
     if (!path) return "";
-    if (typeof path === "object") return absolutizeUrl(path.url || path.path || "", base);
+    if (typeof path === "object") return absolutizeUrl(path.url || path.path || path.src || "", base);
     if (/^https?:\/\//i.test(path)) return absolutizeUrl(path);
     // Pawchive's API example stores a relative thumbnail path; only use this host
     // for that known path pattern, while leaving other relative URLs API-relative.
@@ -196,13 +207,20 @@
       const item = getHistoryItem(post) || history.find(x=>x.key===postKey(post));
       const card = document.createElement("article"); card.className="history-card"; card.tabIndex=0; card.setAttribute("role","button");
       const remove = document.createElement("button"); remove.className="remove-history"; remove.type="button"; remove.textContent="×"; remove.setAttribute("aria-label","Remove from watch history");
-      remove.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();removeHistory(item.key);card.remove();});
+      // Capture the delete click before the card's open handler can see it.
+      remove.addEventListener("click",e=>{
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        const keyToRemove = item && item.key;
+        if (keyToRemove) removeHistory(keyToRemove);
+        else { saveHistory(getHistory().filter(x => x.key !== postKey(post) && x.videoUrl !== post.videoUrl)); }
+        renderHistory();
+      }, true);
       card.appendChild(remove); card.appendChild(createThumb(post,item));
       const info=document.createElement("div");info.className="history-info";
       const title=document.createElement("h3");title.className="card-title";title.textContent=post.title;info.appendChild(title);
       const time=document.createElement("div");time.className="history-time";time.textContent=item && item.duration>0 ? `Resume at ${formatTime(item.time||0)} · ${Math.round((item.time||0)/item.duration*100)}%` : "Recently watched";info.appendChild(time);
       card.appendChild(info);
-      const open=()=>openPlayer(post);card.addEventListener("click",e=>{if(e.target.closest(".remove-history"))return;open();});card.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
+      const open=()=>openPlayer(post);card.addEventListener("click",e=>{if(e.target.closest("button.remove-history"))return;open();});card.addEventListener("keydown",e=>{if(e.target.closest && e.target.closest("button.remove-history"))return;if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
       els.historyGrid.appendChild(card);
     });
   }

@@ -196,13 +196,13 @@
       const item = getHistoryItem(post) || history.find(x=>x.key===postKey(post));
       const card = document.createElement("article"); card.className="history-card"; card.tabIndex=0; card.setAttribute("role","button");
       const remove = document.createElement("button"); remove.className="remove-history"; remove.type="button"; remove.textContent="×"; remove.setAttribute("aria-label","Remove from watch history");
-      remove.addEventListener("click",e=>{e.stopPropagation();removeHistory(postKey(post));});
+      remove.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();removeHistory(postKey(post));});
       card.appendChild(remove); card.appendChild(createThumb(post,item));
       const info=document.createElement("div");info.className="history-info";
       const title=document.createElement("h3");title.className="card-title";title.textContent=post.title;info.appendChild(title);
       const time=document.createElement("div");time.className="history-time";time.textContent=item && item.duration>0 ? `Resume at ${formatTime(item.time||0)} · ${Math.round((item.time||0)/item.duration*100)}%` : "Recently watched";info.appendChild(time);
       card.appendChild(info);
-      const open=()=>openPlayer(post);card.addEventListener("click",open);card.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
+      const open=()=>openPlayer(post);card.addEventListener("click",e=>{if(e.target.closest(".remove-history"))return;open();});card.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
       els.historyGrid.appendChild(card);
     });
   }

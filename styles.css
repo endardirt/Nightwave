@@ -21,3 +21,14 @@ main{max-width:1450px;margin:0 auto;padding:0 5.2vw}.hero{min-height:440px;displ
 .player-dialog:fullscreen:not(.controls-visible) .player-top,.player-dialog:fullscreen:not(.controls-visible) .player-meta,.player-dialog:fullscreen:not(.controls-visible) .player-hints{opacity:0;pointer-events:none;height:0;padding-top:0;padding-bottom:0;overflow:hidden}
 .player-dialog:fullscreen.controls-visible .player-controls{opacity:1}
 .player-dialog:fullscreen .player-controls{flex-shrink:0}
+
+/* True edge-to-edge fullscreen: video fills the monitor; controls float above it. */
+.player-dialog:fullscreen, .player-dialog:-webkit-full-screen{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;border:0!important;border-radius:0!important;box-shadow:none!important;overflow:hidden!important;display:block!important;background:#000!important}
+.player-dialog:fullscreen .player-top,.player-dialog:-webkit-full-screen .player-top,
+.player-dialog:fullscreen .player-meta,.player-dialog:-webkit-full-screen .player-meta,
+.player-dialog:fullscreen .player-hints,.player-dialog:-webkit-full-screen .player-hints{display:none!important}
+.player-dialog:fullscreen .player-shell,.player-dialog:-webkit-full-screen .player-shell{position:absolute!important;inset:0!important;width:100vw!important;height:100vh!important;min-height:0!important;max-height:none!important;aspect-ratio:auto!important;flex:none!important;border:0!important;border-radius:0!important;overflow:hidden!important}
+.player-dialog:fullscreen .player-shell video,.player-dialog:-webkit-full-screen .player-shell video{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;object-fit:contain!important}
+.player-dialog:fullscreen .player-controls,.player-dialog:-webkit-full-screen .player-controls{position:absolute!important;left:0!important;right:0!important;bottom:0!important;z-index:20!important;margin:0!important;padding:14px 20px max(14px,env(safe-area-inset-bottom))!important;background:linear-gradient(transparent,rgba(0,0,0,.88))!important;border:0!important;transition:opacity .18s ease!important}
+.player-dialog:fullscreen:not(.controls-visible) .player-controls,.player-dialog:-webkit-full-screen:not(.controls-visible) .player-controls{opacity:0!important;pointer-events:none!important}
+.player-dialog:fullscreen.controls-visible .player-controls,.player-dialog:-webkit-full-screen.controls-visible .player-controls{opacity:1!important;pointer-events:auto!important}

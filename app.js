@@ -254,13 +254,26 @@
     lastApiUrl = parsed.href; if(persist){safeStorageSet(LAST_API_KEY,lastApiUrl); els.apiUrl.value=lastApiUrl;}
     const token=++loadToken; setLoading(true); hideNotice(); els.refreshBtn.disabled=true;
     try {
-      const response = await fetch(lastApiUrl, {method:"GET", headers:{Accept:"application/json"}, cache:"no-store"});
-      if (!response.ok) throw new Error(`The API returned HTTP ${response.status} ${response.statusText}.`);
-      const type = response.headers.get("content-type") || "";
-      const body = await response.text();
-      let json;
-      try { json=JSON.parse(body); } catch { throw new Error(type.includes("text/html") || /^\s*</.test(body) ? "The URL returned HTML instead of JSON. Paste the API endpoint, not a website page." : "The response was not valid JSON."); }
-      const array=extractArray(json);
+      
+      const workerUrl = "https://nightwave-api-proxy.dirtcoc.workers.dev/";
+      
+      const response = await fetch(
+        workerUrl + "?url=" + encodeURIComponent(lastApiUrl),
+        {
+          method: "GET",
+          headers: { Accept: "application/json" },
+          cache: "no-store"
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.status}`);
+      }
+      
+      const json = await response.json();
+      
+      const array = extractArray(json);
+
       const normalized=array.map((item,i)=>normalizePost(item,i,lastApiUrl)).filter(Boolean);
       if(token!==loadToken)return;
       mergePosts(normalized); renderPosts(); renderHistory(); els.refreshBtn.disabled=false;

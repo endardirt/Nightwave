@@ -3,6 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const els = {
     apiForm:$("apiForm"), apiUrl:$("apiUrl"), loadBtn:$("loadBtn"), refreshBtn:$("refreshBtn"),
+    jsonInput:$("jsonInput"), loadJsonBtn:$("loadJsonBtn"),
     notice:$("notice"), loading:$("loading"), toolbar:$("toolbar"), search:$("searchInput"),
     sort:$("sortSelect"), grid:$("videoGrid"), empty:$("emptyState"), noResults:$("noResults"),
     resultCount:$("resultCount"), historySection:$("history"), historyGrid:$("historyGrid"),
@@ -189,6 +190,27 @@
       els.historyGrid.appendChild(card);
     });
   }
+  function loadPastedJson(text) {
+    const source = text.trim();
+    if (!source) { showNotice("Paste the full JSON response into the box first.", "error"); return; }
+    try {
+      const json = JSON.parse(source);
+      const array = extractArray(json);
+      // If an API URL is present, use it as the base for relative paths; otherwise
+      // relative paths resolve against this page and may need to be made absolute.
+      const base = lastApiUrl || els.apiUrl.value.trim() || window.location.href;
+      const normalized = array.map((item, i) => normalizePost(item, i, base)).filter(Boolean);
+      posts = normalized;
+      renderPosts(); renderHistory();
+      els.refreshBtn.disabled = !lastApiUrl;
+      if (posts.length === 0) showNotice("Valid JSON loaded, but it contains an empty list. Check that the JSON includes posts/videos.", "error");
+      else showNotice(`Loaded ${posts.length} ${posts.length === 1 ? "post" : "posts"} from pasted JSON.`, "success");
+      els.jsonInput.blur();
+    } catch (err) {
+      showNotice(err instanceof SyntaxError ? "That is not valid JSON. Paste the complete raw response, including its opening and closing brackets/braces." : (err.message || "Could not find a list of posts in this JSON."), "error");
+    }
+  }
+
   async function loadFeed(url, {quiet=false}={}) {
     let parsed;
     try { parsed = new URL(url); if (!["http:","https:"].includes(parsed.protocol)) throw new Error(); }
@@ -271,6 +293,7 @@
   function enableFast(){if(!els.video.paused&&!holdingFast){holdingFast=true;els.video.playbackRate=2;els.speedIndicator.classList.add("visible");}}
   function disableFast(){if(holdingFast){holdingFast=false;els.video.playbackRate=Number(els.speed.value)||1;els.speedIndicator.classList.remove("visible");}}
   els.apiForm.addEventListener("submit",e=>{e.preventDefault();loadFeed(els.apiUrl.value.trim());});
+  els.loadJsonBtn.addEventListener("click",()=>loadPastedJson(els.jsonInput.value));
   els.refreshBtn.addEventListener("click",()=>{if(lastApiUrl)loadFeed(lastApiUrl);});
   els.search.addEventListener("input",renderPosts);els.sort.addEventListener("change",renderPosts);
   els.clearHistory.addEventListener("click",()=>{if(confirm("Clear all locally saved watch history and resume positions?")){safeStorageSet(HISTORY_KEY,"[]");renderHistory();renderPosts();}});

@@ -30,6 +30,15 @@
           <label class="sr-only" for="apiUrl">API JSON URL</label>
           <div class="url-input-wrap"><span class="url-icon">↗</span><input id="apiUrl" type="url" placeholder="Paste your API JSON URL…" autocomplete="url" spellcheck="false" required><button id="loadBtn" class="primary-btn" type="submit">Load library <span>→</span></button></div>
         </form>
+        <details class="json-fallback">
+          <summary>Or paste the raw JSON directly <span>— useful if the API is blocked by CORS</span></summary>
+          <div class="json-paste-panel">
+            <label for="jsonInput">Full JSON response</label>
+            <textarea id="jsonInput" rows="7" spellcheck="false" placeholder='Paste the complete JSON response here, e.g. { "posts": [ ... ] }'></textarea>
+            <button id="loadJsonBtn" class="primary-btn" type="button">Load pasted JSON →</button>
+            <p>JSON is parsed locally in your browser. Keep the API URL above filled in if the JSON uses relative thumbnail or video paths.</p>
+          </div>
+        </details>
         <div class="hero-foot"><span class="secure-icon">⌁</span> Runs entirely in your browser <span class="dot-sep">·</span> No account, no backend</div>
       </div>
       <div class="hero-art" aria-hidden="true">

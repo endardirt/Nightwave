@@ -5,7 +5,7 @@ A dark, responsive video-feed viewer that runs entirely in the browser. It fetch
 ## Features
 
 - Static HTML, CSS and JavaScript — no backend, database, build step, or account.
-- Paste an API URL; refresh the same feed later.
+- Paste an API URL; refresh the same feed later. If the API fetch is blocked by CORS, expand **Or paste the raw JSON directly** and paste the complete JSON response instead.
 - Supports JSON arrays and common wrappers such as `posts`, `data`, `items`, `results`, `videos`, and `records`.
 - Detects titles, HTML descriptions, publication dates, tags, thumbnail paths, and common attachment/video URL fields.
 - Search by title, description, tags, or ID; sort by publication date or title.
@@ -28,13 +28,13 @@ A dark, responsive video-feed viewer that runs entirely in the browser. It fetch
 4. Under **Build and deployment**, choose **Deploy from a branch**.
 5. Select branch `main` and folder `/(root)`, then click **Save**.
 6. Wait for the Pages deployment to finish. GitHub will show the public site URL in Settings → Pages.
-7. Open the published URL, paste your JSON API URL, and choose **Load library**.
+7. Open the published URL, paste your JSON API URL, and choose **Load library**. If the API request fails because of CORS, expand **Or paste the raw JSON directly**, paste the complete JSON response, and choose **Load pasted JSON**.
 
 No GitHub Actions workflow or build step is required.
 
 ## API and CORS requirements
 
-Because GitHub Pages is static, the browser fetches the API directly. The API must allow cross-origin requests from your GitHub Pages origin (or allow `*`) by returning an appropriate `Access-Control-Allow-Origin` response header. If the API does not permit browser access, JavaScript cannot bypass that restriction without a backend/proxy; use an API endpoint that supports CORS.
+Because GitHub Pages is static, the browser fetches the API directly. The API must allow cross-origin requests from your GitHub Pages origin (or allow `*`) by returning an appropriate `Access-Control-Allow-Origin` response header. If it does not, expand **Or paste the raw JSON directly** and paste the full response copied from wherever you can access it. This bypasses the API-fetch step only; it does not bypass CORS restrictions on video streams or thumbnails. For relative media/thumbnail paths, leave the API URL filled in so the site can use it as the base URL; absolute URLs are more reliable.
 
 The video host must also permit browser playback. HLS.js fetches the playlist and media segments from the stream host, so those responses generally need appropriate CORS headers too. Some streams use short-lived signed URLs and may expire; refresh the API to obtain a new URL.
 

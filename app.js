@@ -36,18 +36,65 @@
     const clean = posts.map(({raw, ...post}) => post);
     safeStorageSet(LIBRARY_KEY, JSON.stringify(clean));
   }
+  function normalizePostId(value) {
+    return value == null ? "" : String(value).trim();
+  }
+  function normalizePostTitle(value) {
+    return String(value ?? "")
+      .normalize("NFKC")
+      .trim()
+      .replace(/\s+/g, " ")
+      .toLocaleLowerCase();
+  }
+  function normalizePublished(value) {
+    const published = String(value ?? "").trim();
+    if (!published) return "";
+    const timestamp = Date.parse(published);
+    return Number.isNaN(timestamp) ? published : new Date(timestamp).toISOString();
+  }
+  function postIdentity(post) {
+    // Treat a post as the same item only when ID, normalized title, and
+    // published timestamp all match. This avoids merging separate posts that
+    // happen to reuse an ID or title in different feeds.
+    return JSON.stringify([
+      normalizePostId(post.id),
+      normalizePostTitle(post.title),
+      normalizePublished(post.published)
+    ]);
+  }
   function mergePosts(incoming) {
-    const libraryKey = post => String(post.videoUrl || post.id || post.title || "post");
-    const merged = new Map(posts.map(post => [libraryKey(post), post]));
-    for (const post of incoming) {
-      const key = libraryKey(post);
-      const previous = merged.get(key);
-      merged.set(key, previous ? {...previous, ...post, thumbnail:post.thumbnail || previous.thumbnail, videoUrl:post.videoUrl || previous.videoUrl} : post);
+    const merged = [];
+    const identityToIndex = new Map();
+
+    function addOrMerge(post) {
+      const identity = postIdentity(post);
+      const matchIndex = identityToIndex.get(identity);
+      if (matchIndex !== undefined) {
+        const previous = merged[matchIndex];
+        merged[matchIndex] = {
+          ...previous,
+          ...post,
+          id: post.id || previous.id || "",
+          title: post.title || previous.title,
+          description: post.description || previous.description,
+          thumbnail: post.thumbnail || previous.thumbnail,
+          videoUrl: post.videoUrl || previous.videoUrl,
+          published: post.published || previous.published,
+          raw: post.raw || previous.raw
+        };
+        return;
+      }
+
+      identityToIndex.set(identity, merged.length);
+      merged.push(post);
     }
-    posts = Array.from(merged.values());
+
+    for (const post of posts) addOrMerge(post);
+    for (const post of incoming) addOrMerge(post);
+    posts = merged;
     persistLibrary();
   }
-  function postKey(post) { return String(post.id || post.videoUrl || post.title || "post"); }
+  function postKey(post) { return postIdentity(post); }
   function getHistoryItem(post) { return getHistory().find(x => x.key === postKey(post)); }
   function updateHistory(post, patch) {
     if (!post) return;
@@ -117,7 +164,7 @@
     const published = raw.published || raw.published_at || raw.created_at || raw.date || raw.timestamp || "";
     const tags = Array.isArray(raw.tags) ? raw.tags.join(" ") : (typeof raw.tags === "string" ? raw.tags.replace(/[{}"]/g, " ") : "");
     return {
-      id: raw.id == null ? String(index) : String(raw.id), title,
+      id: raw.id == null ? "" : String(raw.id), title,
       description, published: String(published || ""), thumbnail: thumbnailUrl(raw, base),
       videoUrl, tags, hasVideo: !!videoUrl, raw
     };
@@ -254,26 +301,19 @@
     lastApiUrl = parsed.href; if(persist){safeStorageSet(LAST_API_KEY,lastApiUrl); els.apiUrl.value=lastApiUrl;}
     const token=++loadToken; setLoading(true); hideNotice(); els.refreshBtn.disabled=true;
     try {
-      
+      // Fetch through the Cloudflare Worker so public APIs that omit CORS
+      // headers can still be loaded from GitHub Pages.
       const workerUrl = "https://nightwave-api-proxy.dirtcoc.workers.dev/";
-      
       const response = await fetch(
         workerUrl + "?url=" + encodeURIComponent(lastApiUrl),
-        {
-          method: "GET",
-          headers: { Accept: "application/json" },
-          cache: "no-store"
-        }
+        {method:"GET", headers:{Accept:"application/json"}, cache:"no-store"}
       );
-      
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status}`);
-      }
-      
-      const json = await response.json();
-      
-      const array = extractArray(json);
-
+      if (!response.ok) throw new Error(`The API returned HTTP ${response.status} ${response.statusText}.`);
+      const type = response.headers.get("content-type") || "";
+      const body = await response.text();
+      let json;
+      try { json=JSON.parse(body); } catch { throw new Error(type.includes("text/html") || /^\s*</.test(body) ? "The URL returned HTML instead of JSON. Paste the API endpoint, not a website page." : "The response was not valid JSON."); }
+      const array=extractArray(json);
       const normalized=array.map((item,i)=>normalizePost(item,i,lastApiUrl)).filter(Boolean);
       if(token!==loadToken)return;
       mergePosts(normalized); renderPosts(); renderHistory(); els.refreshBtn.disabled=false;
@@ -282,7 +322,7 @@
     } catch(err) {
       if(token!==loadToken)return;
       const msg=err instanceof TypeError || /fetch|network|cors/i.test(err.message||"")
-        ? "The browser could not access this API. This is often a CORS restriction: the API must send an Access-Control-Allow-Origin header permitting this GitHub Pages site. A static site cannot bypass CORS; use an API endpoint that allows browser requests."
+        ? "Could not reach the API proxy. Check that the Cloudflare Worker is deployed and accepts a ?url= parameter."
         : (err.message || "Something went wrong while loading the feed.");
       showNotice(msg, "error");
       if(!quiet && posts.length===0) { els.empty.hidden=false; }

@@ -71,3 +71,11 @@ Watch history, resume timestamps, and the last API URL are stored in this browse
 - API and pasted-JSON loads append to the existing library, merging repeated items rather than clearing earlier results. The library is stored in browser `localStorage` and restored after refresh. The saved API URL is fetched again on reload to update the library.
 - The Continue Watching section uses the saved thumbnail URL when one is available. Thumbnails are displayed without requiring hover.
 - The library and watch history are local to this browser profile and are not synchronized between devices. If browser storage is cleared or full, persistence may fail.
+
+
+### Multiple feeds and library controls
+- Enter multiple API JSON URLs in the top field, one URL per line, then choose **Load library**. **Refresh feeds** reloads all saved URLs.
+- Feeds merge into the saved library; they do not replace existing posts. The library and feed URLs are stored in this browser's local storage.
+- Use **Clear library** to remove saved posts without clearing watch history.
+- Posts without video attachments can be opened to view their image and full description.
+- In the player, holding the mouse button temporarily plays at 2×; releasing it restores the selected playback speed without toggling playback.

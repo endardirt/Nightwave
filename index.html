@@ -28,7 +28,7 @@
         <p class="hero-sub">Bring your video feed into one beautiful library. Search, sort, and pick up exactly where you left off.</p>
         <form id="apiForm" class="api-form">
           <label class="sr-only" for="apiUrl">API JSON URL</label>
-          <div class="url-input-wrap"><span class="url-icon">↗</span><input id="apiUrl" type="url" placeholder="Paste your API JSON URL…" autocomplete="url" spellcheck="false" required><button id="loadBtn" class="primary-btn" type="submit">Load library <span>→</span></button></div>
+          <div class="url-input-wrap"><span class="url-icon">↗</span><textarea id="apiUrl" rows="3" placeholder="Paste API JSON URLs, one per line…" autocomplete="off" spellcheck="false" required></textarea><button id="loadBtn" class="primary-btn" type="submit">Load library <span>→</span></button></div>
         </form>
         <details class="json-fallback">
           <summary>Or paste the raw JSON directly <span>— useful if the API is blocked by CORS</span></summary>
@@ -58,12 +58,12 @@
     </section>
 
     <section id="library" class="section">
-      <div class="section-heading"><div><div class="section-kicker">THE COLLECTION</div><h2 id="libraryTitle">Your library <span class="heading-count" id="resultCount"></span></h2></div><button id="refreshBtn" class="secondary-btn" type="button" disabled><span class="refresh-icon">↻</span> Refresh feed</button></div>
+      <div class="section-heading"><div><div class="section-kicker">THE COLLECTION</div><h2 id="libraryTitle">Your library <span class="heading-count" id="resultCount"></span></h2></div><div class="library-actions"><button id="clearLibraryBtn" class="text-btn" type="button">Clear library</button><button id="refreshBtn" class="secondary-btn" type="button" disabled><span class="refresh-icon">↻</span> Refresh feeds</button></div></div>
       <div id="toolbar" class="toolbar" hidden>
         <label class="searchbox"><span>⌕</span><input id="searchInput" type="search" placeholder="Search titles, descriptions, tags…" aria-label="Search videos"></label>
         <label class="select-wrap"><span class="sr-only">Sort videos</span><select id="sortSelect"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option></select></label>
       </div>
-      <div id="emptyState" class="empty-state"><div class="empty-icon">▤</div><h3>Your next watch is out there.</h3><p>Paste an API URL above to load your videos and posts.</p></div>
+      <div id="emptyState" class="empty-state"><div class="empty-icon">▤</div><h3>Your next watch is out there.</h3><p>Paste one or more API URLs above, one per line, to load videos and posts.</p></div>
       <div id="videoGrid" class="video-grid"></div>
       <div id="noResults" class="empty-state compact" hidden><h3>No matches found</h3><p>Try another search term.</p></div>
     </section>
@@ -76,7 +76,7 @@
     <div class="player-dialog">
       <div class="player-top"><div><div class="player-label">NOW PLAYING</div><h2 id="playerTitle">Video title</h2></div><button class="close-btn" id="closePlayer" aria-label="Close player">×</button></div>
       <div id="playerShell" class="player-shell">
-        <video id="video" playsinline preload="metadata"></video>
+        <video id="video" playsinline preload="metadata"></video><img id="postImage" class="post-image-viewer" alt="" hidden>
         <div id="playerLoading" class="player-loading"><div class="spinner"></div><span>Preparing stream…</span></div>
         <div id="playerError" class="player-error" hidden></div>
         <div id="speedIndicator" class="speed-indicator">2× SPEED</div>

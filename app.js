@@ -7,7 +7,7 @@
     notice:$("notice"), loading:$("loading"), toolbar:$("toolbar"), search:$("searchInput"),
     sort:$("sortSelect"), grid:$("videoGrid"), empty:$("emptyState"), noResults:$("noResults"),
     resultCount:$("resultCount"), historySection:$("history"), historyGrid:$("historyGrid"),
-    historyCount:$("historyCount"), clearHistory:$("clearHistoryBtn"), modal:$("playerModal"),
+    historyCount:$("historyCount"), clearHistory:$("clearHistoryBtn"), clearLibrary:$("clearLibraryBtn"), postImage:$("postImage"), modal:$("playerModal"),
     playerShell:$("playerShell"), playerDialog:$("playerModal").querySelector(".player-dialog"), video:$("video"), playerTitle:$("playerTitle"),
     playerDescription:$("playerDescription"), playerDate:$("playerDate"), playerLoading:$("playerLoading"),
     playerError:$("playerError"), playBtn:$("playBtn"), backBtn:$("backBtn"), forwardBtn:$("forwardBtn"),
@@ -56,7 +56,7 @@
     const next = [item, ...getHistory().filter(x => x.key !== key)].slice(0, MAX_HISTORY);
     saveHistory(next);
   }
-  function removeHistory(key) { saveHistory(getHistory().filter(x => x.key !== key)); }
+  function removeHistory(key) { saveHistory(getHistory().filter(x => x.key !== key)); renderPosts(); }
   function showNotice(message, type="") {
     els.notice.textContent = "";
     const span = document.createElement("span"); span.textContent = message;
@@ -161,7 +161,7 @@
     const date = document.createElement("span"); date.className = "card-date"; date.textContent = formatDate(post.published); meta.appendChild(date);
     if (post.tags) { const dot = document.createElement("span"); dot.className = "video-dot"; meta.appendChild(dot); const tag = document.createElement("span"); tag.className = "card-date"; tag.textContent = post.tags.split(/\s+/).filter(Boolean).slice(0,2).join(" · "); tag.style.overflow="hidden"; tag.style.textOverflow="ellipsis"; tag.style.whiteSpace="nowrap"; meta.appendChild(tag); }
     card.appendChild(meta);
-    const open = () => post.hasVideo ? openPlayer(post) : showNotice(`“${post.title}” has no video attachment, so it is shown as a post only.`, "");
+    const open = () => post.hasVideo ? openPlayer(post) : openPostViewer(post);
     card.addEventListener("click", open); card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     return card;
   }
@@ -196,7 +196,7 @@
       const item = getHistoryItem(post) || history.find(x=>x.key===postKey(post));
       const card = document.createElement("article"); card.className="history-card"; card.tabIndex=0; card.setAttribute("role","button");
       const remove = document.createElement("button"); remove.className="remove-history"; remove.type="button"; remove.textContent="×"; remove.setAttribute("aria-label","Remove from watch history");
-      remove.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();removeHistory(postKey(post));});
+      remove.addEventListener("click",e=>{e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();removeHistory(item.key);card.remove();});
       card.appendChild(remove); card.appendChild(createThumb(post,item));
       const info=document.createElement("div");info.className="history-info";
       const title=document.createElement("h3");title.className="card-title";title.textContent=post.title;info.appendChild(title);
@@ -214,7 +214,7 @@
       const array = extractArray(json);
       // If an API URL is present, use it as the base for relative paths; otherwise
       // relative paths resolve against this page and may need to be made absolute.
-      const base = lastApiUrl || els.apiUrl.value.trim() || window.location.href;
+      const base = lastApiUrl || (els.apiUrl.value.trim().split(/\s+/)[0]) || window.location.href;
       const normalized = array.map((item, i) => normalizePost(item, i, base)).filter(Boolean);
       mergePosts(normalized);
       renderPosts(); renderHistory();
@@ -227,11 +227,11 @@
     }
   }
 
-  async function loadFeed(url, {quiet=false}={}) {
+  async function loadFeed(url, {quiet=false, persist=true}={}) {
     let parsed;
     try { parsed = new URL(url); if (!["http:","https:"].includes(parsed.protocol)) throw new Error(); }
     catch { showNotice("Please enter a valid HTTP or HTTPS API URL.", "error"); return; }
-    lastApiUrl = parsed.href; safeStorageSet(LAST_API_KEY,lastApiUrl); els.apiUrl.value=lastApiUrl;
+    lastApiUrl = parsed.href; if(persist){safeStorageSet(LAST_API_KEY,lastApiUrl); els.apiUrl.value=lastApiUrl;}
     const token=++loadToken; setLoading(true); hideNotice(); els.refreshBtn.disabled=true;
     try {
       const response = await fetch(lastApiUrl, {method:"GET", headers:{Accept:"application/json"}, cache:"no-store"});
@@ -255,6 +255,24 @@
       if(!quiet && posts.length===0) { els.empty.hidden=false; }
     } finally { if(token===loadToken){setLoading(false);els.refreshBtn.disabled=!lastApiUrl;} }
   }
+  async function loadFeeds(urls, {quiet=false}={}) {
+    const unique = [...new Set(urls.map(u=>u.trim()).filter(Boolean))];
+    if (!unique.length) { showNotice("Enter at least one API URL, one per line.", "error"); return; }
+    safeStorageSet(LAST_API_KEY, unique.join("\n"));
+    els.apiUrl.value = unique.join("\n");
+    lastApiUrl = unique[0];
+    let successes = 0;
+    for (const url of unique) {
+      const before = posts.length;
+      await loadFeed(url, {quiet:true, persist:false});
+      if (posts.length > before) successes++;
+    }
+    els.apiUrl.value = unique.join("\n");
+    lastApiUrl = unique[0];
+    els.refreshBtn.disabled = false;
+    if (successes) showNotice(`Loaded and merged posts from ${successes} of ${unique.length} feed${unique.length===1?"":"s"}.`, "success");
+    else if (!quiet) showNotice("Could not load any feeds. Check the URLs or paste the JSON responses instead if CORS blocks them.", "error");
+  }
   function destroyHls() { if(hls){try{hls.destroy();}catch{}hls=null;} }
   function getSavedItem(post) { return getHistory().find(x=>x.key===postKey(post)); }
   function saveProgress(force=false) {
@@ -262,8 +280,15 @@
     const time=els.video.currentTime, duration=Number.isFinite(els.video.duration)?els.video.duration:0;
     updateHistory(currentPost,{time,duration,finished:els.video.ended,videoUrl:currentPost.videoUrl});
   }
+  function openPostViewer(post) {
+    els.playerDialog.classList.add("image-mode");
+    currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
+    destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.hidden=true; els.postImage.hidden=false; els.postImage.src=post.thumbnail || ""; els.postImage.alt=post.title; els.playerLoading.hidden=true; els.playerError.hidden=!post.thumbnail; if(!post.thumbnail){els.playerError.textContent="This post has no image attached.";els.playerError.hidden=false;}
+  }
   function openPlayer(post) {
-    if(!post.videoUrl){showNotice("This post has no playable video attachment.","");return;}
+    if(!post.videoUrl){openPostViewer(post);return;}
+    els.playerDialog.classList.remove("image-mode");
+    els.video.hidden=false; els.postImage.hidden=true; els.postImage.removeAttribute("src"); els.playerError.hidden=true;
     currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided.";
     els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
     els.playerError.hidden=true; els.playerLoading.hidden=false; els.playerLoading.querySelector("span").textContent="Preparing stream…";
@@ -296,7 +321,7 @@
     // Browsers may fire loadedmetadata before handler is installed for native HLS only in rare cases.
     if(els.video.readyState>=1)onMetadata();
   }
-  function closePlayer() { saveProgress(); els.video.pause(); destroyHls(); els.video.removeAttribute("src");els.video.load();els.modal.hidden=true;document.body.classList.remove("modal-open");currentPost=null; }
+  function closePlayer() { saveProgress(); els.video.pause(); destroyHls(); els.video.removeAttribute("src");els.video.load();els.modal.hidden=true;document.body.classList.remove("modal-open");els.playerDialog.classList.remove("image-mode");currentPost=null; }
   function syncTimeline() {
     const v=els.video, duration=v.duration;
     if(!Number.isFinite(duration)||duration<=0){els.timeDisplay.textContent=`${formatTime(v.currentTime)} / 0:00`;return;}
@@ -308,32 +333,34 @@
   async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else if(els.playerDialog?.requestFullscreen)await els.playerDialog.requestFullscreen();else if(els.video.webkitEnterFullscreen)els.video.webkitEnterFullscreen();}catch{showNotice("Fullscreen is unavailable in this browser.","error");}}
   function enableFast(){if(!els.video.paused&&!holdingFast){holdingFast=true;els.video.playbackRate=2;els.speedIndicator.classList.add("visible");}}
   function disableFast(){if(holdingFast){holdingFast=false;els.video.playbackRate=Number(els.speed.value)||1;els.speedIndicator.classList.remove("visible");}}
-  els.apiForm.addEventListener("submit",e=>{e.preventDefault();loadFeed(els.apiUrl.value.trim());});
+  els.apiForm.addEventListener("submit",e=>{e.preventDefault();loadFeeds(els.apiUrl.value.split(/\n+/));});
   els.loadJsonBtn.addEventListener("click",()=>loadPastedJson(els.jsonInput.value));
-  els.refreshBtn.addEventListener("click",()=>{if(lastApiUrl)loadFeed(lastApiUrl);});
+  els.refreshBtn.addEventListener("click",()=>{const saved=safeStorageGet(LAST_API_KEY,"").split(/\n+/).filter(Boolean);if(saved.length)loadFeeds(saved);});
   els.search.addEventListener("input",renderPosts);els.sort.addEventListener("change",renderPosts);
   els.clearHistory.addEventListener("click",()=>{if(confirm("Clear all locally saved watch history and resume positions?")){safeStorageSet(HISTORY_KEY,"[]");renderHistory();renderPosts();}});
+  els.clearLibrary.addEventListener("click",()=>{if(confirm("Clear every post from your saved library? This will not delete watch history or saved API URLs.")){posts=[];safeStorageSet(LIBRARY_KEY,"[]");renderPosts();showNotice("Your library has been cleared.","success");}});
   $("brandHome").addEventListener("click",e=>{e.preventDefault();window.scrollTo({top:0,behavior:"smooth"});});
   els.closePlayer.addEventListener("click",closePlayer);els.modal.querySelector("[data-close-player]").addEventListener("click",closePlayer);
 
-  els.video.addEventListener("click", e=>{e.preventDefault();togglePlay();});
+  let suppressVideoClick = false;
+  els.video.addEventListener("click", e=>{e.preventDefault();if(suppressVideoClick){suppressVideoClick=false;return;}togglePlay();});
   els.video.addEventListener("dblclick", e=>{e.preventDefault();toggleFullscreen();});
   let controlsHideTimer = null;
   function revealFullscreenControls() {
     if (!document.fullscreenElement || !els.playerDialog) return;
-    els.playerDialog.classList.add("controls-visible");
+    els.playerDialog.classList.add("controls-visible"); els.playerDialog.classList.remove("cursor-hidden");
     clearTimeout(controlsHideTimer);
-    if (!els.video.paused) controlsHideTimer = setTimeout(()=>els.playerDialog.classList.remove("controls-visible"), 2200);
+    if (!els.video.paused) controlsHideTimer = setTimeout(()=>{els.playerDialog.classList.remove("controls-visible");els.playerDialog.classList.add("cursor-hidden");}, 2200);
   }
   els.playerDialog?.addEventListener("mousemove", revealFullscreenControls);
-  els.video.addEventListener("pause", ()=>{if(document.fullscreenElement) {clearTimeout(controlsHideTimer);els.playerDialog.classList.add("controls-visible");}});
+  els.video.addEventListener("pause", ()=>{if(document.fullscreenElement) {clearTimeout(controlsHideTimer);els.playerDialog.classList.add("controls-visible");els.playerDialog.classList.remove("cursor-hidden");}});
   els.video.addEventListener("play", revealFullscreenControls);
   els.playBtn.addEventListener("click",togglePlay);els.backBtn.addEventListener("click",()=>seekBy(-5));els.forwardBtn.addEventListener("click",()=>seekBy(5));els.fullscreenBtn.addEventListener("click",toggleFullscreen);
   els.speed.addEventListener("change",()=>{if(!holdingFast)els.video.playbackRate=Number(els.speed.value)||1;});
   els.timeline.addEventListener("pointerdown",e=>{if(!Number.isFinite(els.video.duration)||els.video.duration<=0)return;seekDrag=true;els.timeline.setPointerCapture?.(e.pointerId);const update=ev=>{const r=els.timeline.getBoundingClientRect();const pct=Math.max(0,Math.min(100,(ev.clientX-r.left)/r.width*100));els.timelineFill.style.width=`${pct}%`;els.timelineKnob.style.left=`${pct}%`;els.timeDisplay.textContent=`${formatTime(pct/100*els.video.duration)} / ${formatTime(els.video.duration)}`;seekToPercent(pct);};update(e);const move=ev=>{if(seekDrag)update(ev);};const up=()=>{seekDrag=false;window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});});
   els.timelineKnob.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"){e.preventDefault();seekBy(-5);}if(e.key==="ArrowRight"){e.preventDefault();seekBy(5);}});
-  els.playerShell.addEventListener("mousedown",e=>{if(e.target===els.video){clearTimeout(holdTimer);holdTimer=setTimeout(enableFast,220);}});
-  window.addEventListener("mouseup",()=>{clearTimeout(holdTimer);disableFast();});
+  els.playerShell.addEventListener("mousedown",e=>{if(e.target===els.video){clearTimeout(holdTimer);holdTimer=setTimeout(()=>{if(!els.video.paused){enableFast();suppressVideoClick=true;}},220);}});
+  window.addEventListener("mouseup",()=>{clearTimeout(holdTimer);if(holdingFast)suppressVideoClick=true;disableFast();});
   els.playerShell.addEventListener("touchstart",()=>{clearTimeout(holdTimer);holdTimer=setTimeout(enableFast,350);},{passive:true});
   window.addEventListener("touchend",()=>{clearTimeout(holdTimer);disableFast();},{passive:true});
   document.addEventListener("keydown",e=>{
@@ -353,6 +380,6 @@
   });
   try { const savedLibrary=JSON.parse(safeStorageGet(LIBRARY_KEY,"[]")); if(Array.isArray(savedLibrary)) posts=savedLibrary.filter(p=>p&&typeof p.title==="string"); } catch {}
   const savedUrl=safeStorageGet(LAST_API_KEY,"");
-  if(savedUrl){els.apiUrl.value=savedUrl;lastApiUrl=savedUrl;loadFeed(savedUrl,{quiet:true});}
+  if(savedUrl){const urls=savedUrl.split(/\n+/).filter(Boolean);els.apiUrl.value=urls.join("\n");lastApiUrl=urls[0]||"";loadFeeds(urls,{quiet:true});}
   renderHistory();renderPosts();
 })();

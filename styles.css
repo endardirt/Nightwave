@@ -32,3 +32,18 @@ main{max-width:1450px;margin:0 auto;padding:0 5.2vw}.hero{min-height:440px;displ
 .player-dialog:fullscreen .player-controls,.player-dialog:-webkit-full-screen .player-controls{position:absolute!important;left:0!important;right:0!important;bottom:0!important;z-index:20!important;margin:0!important;padding:14px 20px max(14px,env(safe-area-inset-bottom))!important;background:linear-gradient(transparent,rgba(0,0,0,.88))!important;border:0!important;transition:opacity .18s ease!important}
 .player-dialog:fullscreen:not(.controls-visible) .player-controls,.player-dialog:-webkit-full-screen:not(.controls-visible) .player-controls{opacity:0!important;pointer-events:none!important}
 .player-dialog:fullscreen.controls-visible .player-controls,.player-dialog:-webkit-full-screen.controls-visible .player-controls{opacity:1!important;pointer-events:auto!important}
+
+/* Multi-feed input, library actions, image-only post viewer and fullscreen cursor. */
+.url-input-wrap textarea#apiUrl{flex:1;min-width:0;min-height:72px;max-height:180px;resize:vertical;border:0;outline:0;background:transparent;color:var(--text);font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;padding:8px 0}
+.url-input-wrap textarea#apiUrl::placeholder{color:#777583;font-family:inherit}
+.library-actions{display:flex;align-items:center;gap:12px}
+.library-actions .text-btn{border:1px solid #393541;border-radius:8px;background:#17171e;color:#aaa4b5;padding:10px 12px;font-size:10px}
+.library-actions .text-btn:hover{color:#fff;border-color:#a988e9}
+.post-image-viewer{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+.post-image-viewer[hidden]{display:none}
+.player-dialog:fullscreen.cursor-hidden,.player-dialog:-webkit-full-screen.cursor-hidden{cursor:none}
+.player-dialog:fullscreen.cursor-hidden .player-controls,.player-dialog:-webkit-full-screen.cursor-hidden .player-controls{cursor:none}
+@media(max-width:760px){.library-actions{gap:6px;flex-wrap:wrap}.library-actions .text-btn{padding:9px;font-size:9px}.url-input-wrap textarea#apiUrl{font-size:11px}}
+.player-dialog.image-mode .player-controls,.player-dialog.image-mode .player-hints{display:none!important}
+.player-dialog.image-mode .player-shell{min-height:180px;max-height:65vh;aspect-ratio:auto;height:min(65vh,720px)}
+.player-dialog.image-mode .player-top{display:flex}

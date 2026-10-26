@@ -12,7 +12,7 @@
     playerDescription:$("playerDescription"), playerDate:$("playerDate"), playerLoading:$("playerLoading"),
     playerError:$("playerError"), playBtn:$("playBtn"), backBtn:$("backBtn"), forwardBtn:$("forwardBtn"), previousVideoBtn:$("previousVideoBtn"), nextVideoBtn:$("nextVideoBtn"),
     timeline:$("timelineTrack"), timelineFill:$("timelineFill"), timelineKnob:$("timelineKnob"),
-    timeDisplay:$("timeDisplay"), fullscreenBtn:$("fullscreenBtn"), speed:$("speedSelect"),
+    timeDisplay:$("timeDisplay"), fullscreenBtn:$("fullscreenBtn"), speed:$("speedSelect"), quality:$ ("qualitySelect"),
     speedIndicator:$("speedIndicator"), closePlayer:$("closePlayer")
   };
   const HISTORY_KEY = "nightwave.watchHistory.v1";
@@ -317,26 +317,11 @@
     try {
       // Fetch through the Cloudflare Worker so public APIs that omit CORS
       // headers can still be loaded from GitHub Pages.
-      const workerUrl = new URL("https://nightwave-api-proxy.dirtcoc.workers.dev/");
-      const apiUrl = new URL(lastApiUrl);
-      
-      // Extract the worker's limit from the API URL.
-      const limit = apiUrl.searchParams.get("limit");
-      apiUrl.searchParams.delete("limit");
-      
-      // Pass the clean API URL to the worker.
-      workerUrl.searchParams.set("url", apiUrl.toString());
-      
-      // Pass limit separately, only when specified.
-      if (limit !== null) {
-        workerUrl.searchParams.set("limit", limit);
-      }
-      
-      const response = await fetch(workerUrl.toString(), {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store"
-      });
+      const workerUrl = "https://nightwave-api-proxy.dirtcoc.workers.dev/";
+      const response = await fetch(
+        workerUrl + "?url=" + encodeURIComponent(lastApiUrl),
+        {method:"GET", headers:{Accept:"application/json"}, cache:"no-store"}
+      );
       if (!response.ok) throw new Error(`The API returned HTTP ${response.status} ${response.statusText}.`);
       const type = response.headers.get("content-type") || "";
       const body = await response.text();
@@ -407,6 +392,27 @@
     currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.hidden=true; els.postImage.hidden=false; els.postImage.src=post.thumbnail || ""; els.postImage.alt=post.title; els.playerLoading.hidden=true; els.playerError.hidden=true;
   }
+  const QUALITY_KEY = "nightwave.videoQuality.v1";
+  function savedQuality() { return safeStorageGet(QUALITY_KEY, "auto") || "auto"; }
+  function setQualityOptions(instance) {
+    if (!els.quality) return;
+    const heights = [...new Set((instance?.levels || []).map(level => Number(level.height)).filter(height => height > 0))].sort((a,b)=>b-a);
+    els.quality.innerHTML = '<option value="auto">Auto</option>' + heights.map(height => `<option value="${height}">${height}p</option>`).join("");
+    const preference = savedQuality();
+    const chosen = heights.includes(Number(preference)) ? preference : "auto";
+    els.quality.value = chosen;
+    if (instance) applyQualityPreference(instance, chosen);
+  }
+  function applyQualityPreference(instance, preference = els.quality?.value || savedQuality()) {
+    if (!instance || !els.quality) return;
+    if (preference === "auto") instance.currentLevel = -1;
+    else {
+      const height = Number(preference);
+      const matches = instance.levels.map((level,index)=>({level,index})).filter(x=>Number(x.level.height)===height);
+      if (matches.length) instance.currentLevel = matches[matches.length-1].index;
+      else instance.currentLevel = -1;
+    }
+  }
   function openPlayer(post) {
     if(!post.videoUrl){openPostViewer(post);return;}
     els.playerDialog.classList.remove("image-mode");
@@ -415,6 +421,7 @@
     els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open"); updatePlayerNavigation();
     els.playerError.hidden=true; els.playerLoading.hidden=false; els.playerLoading.querySelector("span").textContent="Preparing stream…";
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.playbackRate=Number(els.speed.value)||1;
+    if (els.quality) { els.quality.innerHTML = `<option value="auto">Auto</option>`; els.quality.value = savedQuality(); }
     els.timelineFill.style.width="0%";els.timelineKnob.style.left="0%";els.timeDisplay.textContent="0:00 / 0:00";els.playBtn.textContent="▶";
     updateHistory(post,{videoUrl:post.videoUrl});
     const token=++loadToken; // token also prevents a stale feed result/player callback race
@@ -434,6 +441,8 @@
     if(els.video.canPlayType("application/vnd.apple.mpegurl")){els.video.src=url;els.video.load();}
     else if(isHls && window.Hls && Hls.isSupported()){
       hls=new Hls({enableWorker:true,lowLatencyMode:true,backBufferLength:30});
+      hls.on(Hls.Events.MANIFEST_PARSED,()=>{if(token===loadToken)setQualityOptions(hls);});
+      hls.on(Hls.Events.LEVELS_UPDATED,()=>{if(token===loadToken)setQualityOptions(hls);});
       hls.on(Hls.Events.ERROR,(_,data)=>{if(token!==loadToken||!data.fatal)return;
         if(data.type===Hls.ErrorTypes.NETWORK_ERROR){showError("Network error loading HLS segments. The stream host may block cross-origin access (CORS), or the signed URL may have expired.");}
         else if(data.type===Hls.ErrorTypes.MEDIA_ERROR){hls.recoverMediaError();}
@@ -481,6 +490,7 @@
   els.video.addEventListener("play", revealFullscreenControls);
   els.playBtn.addEventListener("click",togglePlay);els.backBtn.addEventListener("click",()=>seekBy(-5));els.forwardBtn.addEventListener("click",()=>seekBy(5));els.fullscreenBtn.addEventListener("click",toggleFullscreen);
   els.speed.addEventListener("change",()=>{if(!holdingFast)els.video.playbackRate=Number(els.speed.value)||1;});
+  els.quality?.addEventListener("change",()=>{const choice=els.quality.value || "auto";try{localStorage.setItem(QUALITY_KEY,choice);}catch{}if(hls)applyQualityPreference(hls,choice);});
   els.timeline.addEventListener("pointerdown",e=>{if(!Number.isFinite(els.video.duration)||els.video.duration<=0)return;seekDrag=true;els.timeline.setPointerCapture?.(e.pointerId);const update=ev=>{const r=els.timeline.getBoundingClientRect();const pct=Math.max(0,Math.min(100,(ev.clientX-r.left)/r.width*100));els.timelineFill.style.width=`${pct}%`;els.timelineKnob.style.left=`${pct}%`;els.timeDisplay.textContent=`${formatTime(pct/100*els.video.duration)} / ${formatTime(els.video.duration)}`;seekToPercent(pct);};update(e);const move=ev=>{if(seekDrag)update(ev);};const up=()=>{seekDrag=false;window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",up);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",up,{once:true});});
   els.timelineKnob.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"){e.preventDefault();seekBy(-5);}if(e.key==="ArrowRight"){e.preventDefault();seekBy(5);}});
   els.playerShell.addEventListener("mousedown",e=>{if(e.target===els.video){clearTimeout(holdTimer);holdTimer=setTimeout(()=>{if(!els.video.paused){enableFast();suppressVideoClick=true;}},220);}});
@@ -489,6 +499,9 @@
   window.addEventListener("touchend",()=>{clearTimeout(holdTimer);disableFast();},{passive:true});
   document.addEventListener("keydown",e=>{
     if(els.modal.hidden)return;
+    if(e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && (e.key.toLowerCase()==="p" || e.key.toLowerCase()==="n")) {
+      e.preventDefault(); e.stopPropagation(); stepDisplayedVideo(e.key.toLowerCase()==="p" ? -1 : 1); return;
+    }
     if(["INPUT","TEXTAREA","SELECT"].includes(e.target.tagName))return;
     if(e.key==="Escape"){closePlayer();return;}
     if(e.code==="Space"){e.preventDefault();if(!spaceDown){spaceDown=true;spaceHoldTimer=setTimeout(()=>{if(spaceDown)enableFast();},220);}return;}

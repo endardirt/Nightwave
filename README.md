@@ -40,3 +40,9 @@ API requests are sent through the Cloudflare Worker configured in `app.js`:
 
 The Worker must accept a `url` query parameter, fetch that public endpoint, and return the response with suitable CORS headers. This proxy is intended for public JSON APIs; it does not bypass authentication or other access controls. Video streams and thumbnail hosts may have their own separate CORS restrictions.
 
+
+### Player quality and navigation shortcuts
+
+- Use the **Quality** menu in the player to choose **Auto** or an available resolution (for example, 720p or 1080p). Your choice is saved in this browser and reused for future videos. Auto is the default until you choose otherwise.
+- Press **Shift + P** for the previous video and **Shift + N** for the next video. Navigation follows the currently filtered and sorted library, and switching videos does not exit fullscreen.
+- Resolution selection is available for HLS streams played through hls.js. Browsers that use their native HLS player may not expose manual quality selection.

@@ -10,7 +10,7 @@
     historyCount:$("historyCount"), clearHistory:$("clearHistoryBtn"), clearLibrary:$("clearLibraryBtn"), postImage:$("postImage"), modal:$("playerModal"),
     playerShell:$("playerShell"), playerDialog:$("playerModal").querySelector(".player-dialog"), video:$("video"), playerTitle:$("playerTitle"),
     playerDescription:$("playerDescription"), playerDate:$("playerDate"), playerLoading:$("playerLoading"),
-    playerError:$("playerError"), playBtn:$("playBtn"), backBtn:$("backBtn"), forwardBtn:$("forwardBtn"),
+    playerError:$("playerError"), playBtn:$("playBtn"), backBtn:$("backBtn"), forwardBtn:$("forwardBtn"), previousVideoBtn:$("previousVideoBtn"), nextVideoBtn:$("nextVideoBtn"),
     timeline:$("timelineTrack"), timelineFill:$("timelineFill"), timelineKnob:$("timelineKnob"),
     timeDisplay:$("timeDisplay"), fullscreenBtn:$("fullscreenBtn"), speed:$("speedSelect"),
     speedIndicator:$("speedIndicator"), closePlayer:$("closePlayer")
@@ -92,7 +92,20 @@
     for (const post of posts) addOrMerge(post);
     for (const post of incoming) addOrMerge(post);
     posts = merged;
+    // Refresh expiring signed stream URLs in saved watch history without losing progress.
+    const refreshedByIdentity = new Map(posts.map(post => [postIdentity(post), post]));
+    const history = getHistory().map(item => {
+      const refreshed = refreshedByIdentity.get(item.key);
+      return refreshed && refreshed.videoUrl ? {...item, videoUrl:refreshed.videoUrl, thumbnail:refreshed.thumbnail || item.thumbnail, title:refreshed.title, published:refreshed.published} : item;
+    });
+    safeStorageSet(HISTORY_KEY, JSON.stringify(history));
+    if (currentPost) {
+      const refreshedCurrent = refreshedByIdentity.get(postIdentity(currentPost));
+      if (refreshedCurrent) currentPost = refreshedCurrent;
+    }
     persistLibrary();
+    renderHistory();
+    updatePlayerNavigation();
   }
   function postKey(post) { return postIdentity(post); }
   function getHistoryItem(post) { return getHistory().find(x => x.key === postKey(post)); }
@@ -245,6 +258,7 @@
     els.empty.hidden = posts.length > 0;
     els.noResults.hidden = posts.length === 0 || filtered.length > 0;
     els.toolbar.hidden = posts.length === 0;
+    updatePlayerNavigation();
   }
   // Delegate history deletion from the grid in capture phase so it cannot bubble to a card opener.
   els.historyGrid.addEventListener("click", e => {
@@ -303,28 +317,11 @@
     try {
       // Fetch through the Cloudflare Worker so public APIs that omit CORS
       // headers can still be loaded from GitHub Pages.
-      
-      const workerUrl = new URL("https://nightwave-api-proxy.dirtcoc.workers.dev/");
-      const apiUrl = new URL(lastApiUrl);
-      
-      // Extract the worker's limit from the API URL.
-      const limit = apiUrl.searchParams.get("limit");
-      apiUrl.searchParams.delete("limit");
-      
-      // Pass the clean API URL to the worker.
-      workerUrl.searchParams.set("url", apiUrl.toString());
-      
-      // Pass limit separately, only when specified.
-      if (limit !== null) {
-        workerUrl.searchParams.set("limit", limit);
-      }
-      
-      const response = await fetch(workerUrl.toString(), {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store"
-      });
-
+      const workerUrl = "https://nightwave-api-proxy.dirtcoc.workers.dev/";
+      const response = await fetch(
+        workerUrl + "?url=" + encodeURIComponent(lastApiUrl),
+        {method:"GET", headers:{Accept:"application/json"}, cache:"no-store"}
+      );
       if (!response.ok) throw new Error(`The API returned HTTP ${response.status} ${response.statusText}.`);
       const type = response.headers.get("content-type") || "";
       const body = await response.text();
@@ -363,6 +360,26 @@
     if (successes) showNotice(`Loaded and merged posts from ${successes} of ${unique.length} feed${unique.length===1?"":"s"}.`, "success");
     else if (!quiet) showNotice("Could not load any feeds. Check the URLs or paste the JSON responses instead if CORS blocks them.", "error");
   }
+  function displayedVideoPosts() { return filteredPosts().filter(post => !!post.videoUrl); }
+  function updatePlayerNavigation() {
+    if (!els.previousVideoBtn || !els.nextVideoBtn) return;
+    const list = displayedVideoPosts();
+    const index = currentPost ? list.findIndex(post => postIdentity(post) === postIdentity(currentPost)) : -1;
+    const canNavigate = index >= 0 && list.length > 1;
+    els.previousVideoBtn.disabled = !canNavigate;
+    els.nextVideoBtn.disabled = !canNavigate;
+    els.previousVideoBtn.title = index <= 0 ? "Previous video (start of current list)" : "Previous video";
+    els.nextVideoBtn.title = index < 0 || index >= list.length - 1 ? "Next video (end of current list)" : "Next video";
+  }
+  function stepDisplayedVideo(direction) {
+    const list = displayedVideoPosts();
+    if (!currentPost || !list.length) return;
+    const index = list.findIndex(post => postIdentity(post) === postIdentity(currentPost));
+    if (index < 0) return;
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= list.length) return;
+    openPlayer(list[nextIndex]);
+  }
   function destroyHls() { if(hls){try{hls.destroy();}catch{}hls=null;} }
   function getSavedItem(post) { return getHistory().find(x=>x.key===postKey(post)); }
   function saveProgress(force=false) {
@@ -380,7 +397,7 @@
     els.playerDialog.classList.remove("image-mode");
     els.video.hidden=false; els.postImage.hidden=true; els.postImage.removeAttribute("src"); els.playerError.hidden=true;
     currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided.";
-    els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
+    els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open"); updatePlayerNavigation();
     els.playerError.hidden=true; els.playerLoading.hidden=false; els.playerLoading.querySelector("span").textContent="Preparing stream…";
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.playbackRate=Number(els.speed.value)||1;
     els.timelineFill.style.width="0%";els.timelineKnob.style.left="0%";els.timeDisplay.textContent="0:00 / 0:00";els.playBtn.textContent="▶";
@@ -397,7 +414,7 @@
     els.video.onwaiting=()=>{if(token===loadToken && !els.video.paused){els.playerLoading.hidden=false;els.playerLoading.querySelector("span").textContent="Buffering…";}};
     els.video.oncanplay=()=>{if(token===loadToken)els.playerLoading.hidden=true;};
     els.video.ontimeupdate=()=>{if(token===loadToken){syncTimeline();if(!els.video.paused)saveProgress();}};
-    els.video.onended=()=>{if(token===loadToken){updateHistory(post,{time:0,duration:Number.isFinite(els.video.duration)?els.video.duration:0,finished:true});els.playBtn.textContent="▶";}};
+    els.video.onended=()=>{if(token===loadToken){updateHistory(currentPost || post,{time:0,duration:Number.isFinite(els.video.duration)?els.video.duration:0,finished:true});els.playBtn.textContent="▶";}};
     const isHls=/\.m3u8(?:$|[?#])/i.test(url);
     if(els.video.canPlayType("application/vnd.apple.mpegurl")){els.video.src=url;els.video.load();}
     else if(isHls && window.Hls && Hls.isSupported()){
@@ -431,6 +448,8 @@
   els.clearLibrary.addEventListener("click",()=>{if(confirm("Clear every post from your saved library? This will not delete watch history or saved API URLs.")){posts=[];safeStorageSet(LIBRARY_KEY,"[]");renderPosts();showNotice("Your library has been cleared.","success");}});
   $("brandHome").addEventListener("click",e=>{e.preventDefault();window.scrollTo({top:0,behavior:"smooth"});});
   els.closePlayer.addEventListener("click",closePlayer);els.modal.querySelector("[data-close-player]").addEventListener("click",closePlayer);
+  els.previousVideoBtn.addEventListener("click",()=>stepDisplayedVideo(-1));
+  els.nextVideoBtn.addEventListener("click",()=>stepDisplayedVideo(1));
 
   let suppressVideoClick = false;
   els.video.addEventListener("click", e=>{e.preventDefault();if(suppressVideoClick){suppressVideoClick=false;return;}togglePlay();});

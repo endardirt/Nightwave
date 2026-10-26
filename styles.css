@@ -50,3 +50,31 @@ main{max-width:1450px;margin:0 auto;padding:0 5.2vw}.hero{min-height:440px;displ
 /* Keep the watch-history delete control reliably clickable above card content. */
 .history-card .remove-history{z-index:20;pointer-events:auto;cursor:pointer;opacity:1;touch-action:manipulation}
 .history-card .thumb-wrap,.history-card .thumb-overlay{pointer-events:none}
+
+
+/* Watch history is a single horizontally scrollable strip, never a growing grid. */
+#historyGrid.history-grid{
+  display:flex;
+  flex-flow:row nowrap;
+  align-items:stretch;
+  gap:14px;
+  width:100%;
+  max-width:100%;
+  overflow-x:auto;
+  overflow-y:hidden;
+  overscroll-behavior-x:contain;
+  padding:2px 2px 12px;
+  scrollbar-width:thin;
+  scrollbar-color:#5b4c70 #17151d;
+}
+#historyGrid .history-card{
+  flex:0 0 210px;
+  width:210px;
+  min-width:0;
+  max-width:210px;
+}
+#historyGrid .history-card .thumb-wrap{aspect-ratio:16/9}
+.track-nav-btn{font-size:14px}
+.track-nav-btn:disabled{opacity:.28;cursor:not-allowed;pointer-events:none}
+.track-nav-btn:disabled:hover{background:transparent;border-color:transparent}
+@media(max-width:520px){#historyGrid .history-card{flex-basis:165px;width:165px;max-width:165px}}

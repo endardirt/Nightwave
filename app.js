@@ -317,11 +317,26 @@
     try {
       // Fetch through the Cloudflare Worker so public APIs that omit CORS
       // headers can still be loaded from GitHub Pages.
-      const workerUrl = "https://nightwave-api-proxy.dirtcoc.workers.dev/";
-      const response = await fetch(
-        workerUrl + "?url=" + encodeURIComponent(lastApiUrl),
-        {method:"GET", headers:{Accept:"application/json"}, cache:"no-store"}
-      );
+      const workerUrl = new URL("https://nightwave-api-proxy.dirtcoc.workers.dev/");
+      const apiUrl = new URL(lastApiUrl);
+      
+      // Extract the worker's limit from the API URL.
+      const limit = apiUrl.searchParams.get("limit");
+      apiUrl.searchParams.delete("limit");
+      
+      // Pass the clean API URL to the worker.
+      workerUrl.searchParams.set("url", apiUrl.toString());
+      
+      // Pass limit separately, only when specified.
+      if (limit !== null) {
+        workerUrl.searchParams.set("limit", limit);
+      }
+      
+      const response = await fetch(workerUrl.toString(), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store"
+      });
       if (!response.ok) throw new Error(`The API returned HTTP ${response.status} ${response.statusText}.`);
       const type = response.headers.get("content-type") || "";
       const body = await response.text();

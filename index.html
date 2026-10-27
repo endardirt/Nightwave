@@ -7,17 +7,34 @@
   <meta name="description" content="A private, browser-based video library for JSON APIs and HLS streams.">
   <title>Nightwave — Video Library</title>
   <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js" defer></script>
   <script src="app.js" defer></script>
 </head>
-<body>
+<body class="auth-required">
+  <section id="authGate" class="auth-gate" aria-labelledby="authTitle">
+    <form id="authForm" class="auth-card">
+      <div class="auth-brand"><span class="brand-mark">N</span><span>NIGHTWAVE</span></div>
+      <div class="section-kicker">YOUR PRIVATE LIBRARY</div>
+      <h1 id="authTitle">Welcome back.</h1>
+      <p id="authSubtitle">Sign in to access your synced library.</p>
+      <label for="authUsername">Username</label>
+      <input id="authUsername" name="username" autocomplete="username" minlength="3" maxlength="24" pattern="[A-Za-z0-9_]+" required placeholder="3–24 letters, numbers, or _">
+      <label for="authPassword">Password</label>
+      <input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="8" required placeholder="At least 8 characters">
+      <p id="authError" class="auth-error" role="alert" hidden></p>
+      <button id="authSubmit" class="primary-btn auth-submit" type="submit">Sign in</button>
+      <button id="authToggle" class="auth-toggle" type="button">Create an account instead</button>
+      <p class="auth-footnote">Your library, API list, and watch history sync to your account.</p>
+    </form>
+  </section>
   <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
   <header class="topbar">
     <a class="brand" href="#" id="brandHome" aria-label="Nightwave home"><span class="brand-mark">N</span><span>NIGHTWAVE</span></a>
     <nav class="topnav" aria-label="Main navigation">
       <a href="#library">Discover</a><a href="#history">Continue watching</a>
     </nav>
-    <div class="topbar-right"><span class="local-pill"><span></span> LOCAL LIBRARY</span></div>
+    <div class="topbar-right account-actions"><span id="accountLabel" class="local-pill"><span></span> CLOUD LIBRARY</span><button id="signOutBtn" class="text-btn" type="button">Sign out</button></div>
   </header>
 
   <main>
@@ -39,7 +56,7 @@
             <p>JSON is parsed locally in your browser. Keep the API URL above filled in if the JSON uses relative thumbnail or video paths.</p>
           </div>
         </details>
-        <div class="hero-foot"><span class="secure-icon">⌁</span> Runs entirely in your browser <span class="dot-sep">·</span> No account, no backend</div>
+        <div class="hero-foot"><span class="secure-icon">⌁</span> Your account syncs your library across devices <span class="dot-sep">·</span> Secure cloud storage</div>
       </div>
       <div class="hero-art" aria-hidden="true">
         <div class="art-orbit orbit-a"></div><div class="art-orbit orbit-b"></div>
@@ -69,7 +86,7 @@
     </section>
   </main>
 
-  <footer><div class="footer-brand"><span class="brand-mark small">N</span> NIGHTWAVE</div><span>Made for your watchlist. Data stays in this browser.</span><a href="README.md">Setup guide</a></footer>
+  <footer><div class="footer-brand"><span class="brand-mark small">N</span> NIGHTWAVE</div><span>Your personal library, synced securely to your account.</span><a href="README.md">Setup guide</a></footer>
 
   <div id="playerModal" class="player-modal" hidden role="dialog" aria-modal="true" aria-labelledby="playerTitle">
     <div class="modal-backdrop" data-close-player></div>

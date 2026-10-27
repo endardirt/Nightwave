@@ -1,6 +1,11 @@
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
+  const SUPABASE_URL = "https://hsahfshjaqldddatsqsx.supabase.co";
+  const SUPABASE_PUBLISHABLE_KEY = "sb_publishable__1SwgYmZa6ylPLNfed902g_tXT450l6";
+  const AUTH_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/username-auth`;
+  const supabaseClient = window.supabase?.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } });
+  let cloudUser = null, cloudReady = false, cloudSaveTimer = null, authIsSignup = false;
   const els = {
     apiForm:$("apiForm"), apiUrl:$("apiUrl"), loadBtn:$("loadBtn"), refreshBtn:$("refreshBtn"),
     jsonInput:$("jsonInput"), loadJsonBtn:$("loadJsonBtn"),
@@ -26,8 +31,90 @@
     try { const value = localStorage.getItem(key); return value == null ? fallback : value; } catch { return fallback; }
   }
   function safeStorageSet(key, value) {
-    try { localStorage.setItem(key, value); return true; } catch { showNotice("Your browser storage is full or disabled. Watch progress may not be saved.", "error"); return false; }
+    try { localStorage.setItem(key, value); scheduleCloudSync(); return true; } catch { showNotice("Your browser storage is full or disabled. Watch progress may not be saved.", "error"); return false; }
   }
+  function currentLocalSnapshot() {
+    let library=[], history=[], apiUrls=[];
+    try { const x=JSON.parse(localStorage.getItem(LIBRARY_KEY)||"[]"); if(Array.isArray(x))library=x; } catch {}
+    try { const x=JSON.parse(localStorage.getItem(HISTORY_KEY)||"[]"); if(Array.isArray(x))history=x; } catch {}
+    try { apiUrls=(localStorage.getItem(LAST_API_KEY)||"").split(/\n+/).map(x=>x.trim()).filter(Boolean); } catch {}
+    return {library,history,apiUrls};
+  }
+  function scheduleCloudSync() {
+    if(!cloudReady || !cloudUser || !supabaseClient) return;
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer=setTimeout(async()=>{
+      const snap=currentLocalSnapshot();
+      const {error}=await supabaseClient.from("user_data").upsert({user_id:cloudUser.id,api_urls:snap.apiUrls,library:snap.library,watch_history:snap.history,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+      if(error) showNotice(`Cloud sync failed: ${error.message}. Your current browser copy remains available.`,"error");
+    },700);
+  }
+  function showAuthError(message) { const el=$("authError"); if(el){el.textContent=message;el.hidden=false;} }
+  function setAuthMode(signup) {
+    authIsSignup=signup;
+    $("authTitle").textContent=signup?"Create your account.":"Welcome back.";
+    $("authSubtitle").textContent=signup?"Choose a username and password to create your private library.":"Sign in to access your synced library.";
+    $("authSubmit").textContent=signup?"Create account":"Sign in";
+    $("authToggle").textContent=signup?"Already have an account? Sign in":"Create an account instead";
+    $("authPassword").setAttribute("autocomplete",signup?"new-password":"current-password");
+    $("authError").hidden=true;
+  }
+  async function callUsernameAuth(action, username, password) {
+    const response=await fetch(AUTH_FUNCTION_URL,{method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_PUBLISHABLE_KEY},body:JSON.stringify({action,username,password})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(data.error||"Authentication failed. Please try again.");
+    return data;
+  }
+  async function restoreCloudData(user) {
+    cloudUser=user; cloudReady=false;
+    const {data,error}=await supabaseClient.from("user_data").select("api_urls,library,watch_history").eq("user_id",user.id).maybeSingle();
+    if(error) throw error;
+    if(data) {
+      safeStorageSet(LIBRARY_KEY,JSON.stringify(Array.isArray(data.library)?data.library:[]));
+      safeStorageSet(HISTORY_KEY,JSON.stringify(Array.isArray(data.watch_history)?data.watch_history:[]));
+      safeStorageSet(LAST_API_KEY,(Array.isArray(data.api_urls)?data.api_urls:[]).join("\n"));
+    } else {
+      const snap=currentLocalSnapshot();
+      const {error:insertError}=await supabaseClient.from("user_data").insert({user_id:user.id,api_urls:snap.apiUrls,library:snap.library,watch_history:snap.history});
+      if(insertError) throw insertError;
+    }
+    cloudReady=true;
+    document.body.classList.remove("auth-required");
+    $("authGate").hidden=true;
+    $("accountLabel").innerHTML="<span></span> "+(user.user_metadata?.username||"CLOUD LIBRARY");
+    const savedLibrary=currentLocalSnapshot().library;
+    posts=Array.isArray(savedLibrary)?savedLibrary.filter(p=>p&&typeof p.title==="string"):[];
+    const savedUrl= safeStorageGet(LAST_API_KEY,"");
+    if(savedUrl){const urls=savedUrl.split(/\n+/).filter(Boolean);els.apiUrl.value=urls.join("\n");lastApiUrl=urls[0]||"";await loadFeeds(urls,{quiet:true});}
+    renderHistory();renderPosts();
+  }
+  async function initializeAuth() {
+    if(!supabaseClient){showAuthError("Supabase client failed to load. Refresh the page and try again.");return;}
+    $("authForm").addEventListener("submit",async e=>{
+      e.preventDefault();$("authSubmit").disabled=true;$("authError").hidden=true;
+      const username=$("authUsername").value.trim().toLowerCase(),password=$("authPassword").value;
+      if(!/^[a-z0-9_]{3,24}$/.test(username)){showAuthError("Username must be 3–24 characters using letters, numbers, or underscores.");$("authSubmit").disabled=false;return;}
+      if(password.length<8){showAuthError("Use a password with at least 8 characters.");$("authSubmit").disabled=false;return;}
+      try {
+        const result=await callUsernameAuth(authIsSignup?"signup":"login",username,password);
+        if(!result.session?.access_token||!result.session?.refresh_token)throw new Error("Authentication succeeded but no session was returned.");
+        const {data,error}=await supabaseClient.auth.setSession({access_token:result.session.access_token,refresh_token:result.session.refresh_token});
+        if(error)throw error;
+        await restoreCloudData(data.user||result.user);
+      } catch(err) {showAuthError(err.message||"Could not sign in.");}
+      finally {$("authSubmit").disabled=false;}
+    });
+    $("authToggle").addEventListener("click",()=>setAuthMode(!authIsSignup));
+    $("signOutBtn").addEventListener("click",async()=>{if(cloudReady)scheduleCloudSync();await new Promise(r=>setTimeout(r,850));await supabaseClient.auth.signOut();cloudReady=false;cloudUser=null;location.reload();});
+    const {data,error}=await supabaseClient.auth.getSession();
+    if(error){showAuthError(error.message);return;}
+    if(data.session){
+      const {data:userData,error:userError}=await supabaseClient.auth.getUser();
+      if(!userError&&userData.user){try{await restoreCloudData(userData.user);return;}catch(err){showAuthError(`Could not load cloud data: ${err.message}`);}}
+    }
+    document.body.classList.add("auth-required");$("authGate").hidden=false;
+  }
+
   function getHistory() {
     try { const parsed = JSON.parse(safeStorageGet(HISTORY_KEY, "[]")); return Array.isArray(parsed) ? parsed.filter(x => x && typeof x.key === "string") : []; } catch { return []; }
   }
@@ -319,19 +406,17 @@
       // headers can still be loaded from GitHub Pages.
       const workerUrl = new URL("https://nightwave-api-proxy.dirtcoc.workers.dev/");
       const apiUrl = new URL(lastApiUrl);
-      
-      // Extract the worker's limit from the API URL.
+
+      // The API's limit parameter belongs on the Worker request separately,
+      // rather than being forwarded inside the target URL.
       const limit = apiUrl.searchParams.get("limit");
       apiUrl.searchParams.delete("limit");
-      
-      // Pass the clean API URL to the worker.
+
       workerUrl.searchParams.set("url", apiUrl.toString());
-      
-      // Pass limit separately, only when specified.
       if (limit !== null) {
         workerUrl.searchParams.set("limit", limit);
       }
-      
+
       const response = await fetch(workerUrl.toString(), {
         method: "GET",
         headers: { Accept: "application/json" },
@@ -530,8 +615,6 @@
     if(document.fullscreenElement===els.playerDialog){els.playerDialog.classList.add("controls-visible");revealFullscreenControls();}
     else {clearTimeout(controlsHideTimer);els.playerDialog.classList.remove("controls-visible");}
   });
-  try { const savedLibrary=JSON.parse(safeStorageGet(LIBRARY_KEY,"[]")); if(Array.isArray(savedLibrary)) posts=savedLibrary.filter(p=>p&&typeof p.title==="string"); } catch {}
-  const savedUrl=safeStorageGet(LAST_API_KEY,"");
-  if(savedUrl){const urls=savedUrl.split(/\n+/).filter(Boolean);els.apiUrl.value=urls.join("\n");lastApiUrl=urls[0]||"";loadFeeds(urls,{quiet:true});}
-  renderHistory();renderPosts();
+  document.body.classList.add("auth-required");
+  initializeAuth().catch(err=>showAuthError(err.message||"Could not initialize account login."));
 })();

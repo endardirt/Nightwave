@@ -78,3 +78,11 @@ main{max-width:1450px;margin:0 auto;padding:0 5.2vw}.hero{min-height:440px;displ
 .track-nav-btn:disabled{opacity:.28;cursor:not-allowed;pointer-events:none}
 .track-nav-btn:disabled:hover{background:transparent;border-color:transparent}
 @media(max-width:520px){#historyGrid .history-card{flex-basis:165px;width:165px;max-width:165px}}
+
+
+/* Supabase username/password gate */
+body.auth-required>header,body.auth-required>main,body.auth-required>footer,body.auth-required>#playerModal{display:none!important}
+.auth-gate{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:22px;background:radial-gradient(ellipse at 50% 0%,#2b1b3d 0%,#0b0b10 58%)}
+.auth-card{box-sizing:border-box;width:min(100%,420px);padding:34px;border:1px solid #393143;border-radius:18px;background:#111117;box-shadow:0 25px 100px #0009;display:flex;flex-direction:column;gap:11px}
+.auth-brand{display:flex;align-items:center;gap:10px;margin-bottom:18px;font-size:12px;font-weight:900;letter-spacing:2px}.auth-card .section-kicker{margin:0}.auth-card h1{font-size:35px;letter-spacing:-1.5px;margin:0}.auth-card>p{color:#a49cac;font-size:12px;line-height:1.6;margin:0 0 10px}.auth-card label{font-size:11px;font-weight:700;color:#d4cddd;margin-top:5px}.auth-card input{width:100%;box-sizing:border-box;padding:13px 12px;border-radius:8px;border:1px solid #3c3547;background:#0a0a0f;color:#f6f2fb;font:13px inherit;outline:none}.auth-card input:focus{border-color:#a988e9;box-shadow:0 0 0 3px #a988e91b}.auth-submit{width:100%;margin-top:8px}.auth-toggle{border:0;background:transparent;color:#c9b2f5;padding:10px;cursor:pointer;font-size:12px}.auth-toggle:hover{color:#fff}.auth-card .auth-footnote{border-top:1px solid #2b2732;padding-top:14px;margin:7px 0 0;font-size:10px}.auth-error{color:#ff9b9b!important;background:#351b23;border:1px solid #62303d;border-radius:7px;padding:10px}.auth-error[hidden]{display:none}.account-actions{display:flex;align-items:center;gap:12px}.account-actions .text-btn{border:1px solid #393541;border-radius:8px;background:#17171e;color:#aaa4b5;padding:9px 11px;font-size:10px;cursor:pointer}.account-actions .text-btn:hover{color:#fff;border-color:#a988e9}
+.auth-gate[hidden]{display:none!important}

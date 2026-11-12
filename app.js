@@ -402,31 +402,26 @@
     lastApiUrl = parsed.href; if(persist){safeStorageSet(LAST_API_KEY,lastApiUrl); els.apiUrl.value=lastApiUrl;}
     const token=++loadToken; setLoading(true); hideNotice(); els.refreshBtn.disabled=true;
     try {
-      // Fetch through the Cloudflare Worker so public APIs that omit CORS
-      // headers can still be loaded from GitHub Pages.
-      const workerUrl = new URL("https://nightwave-api-proxy.dirtcoc.workers.dev/");
-      const apiUrl = new URL(lastApiUrl);
-
-      // The API's limit parameter belongs on the Worker request separately,
-      // rather than being forwarded inside the target URL.
-      const limit = apiUrl.searchParams.get("limit");
-      apiUrl.searchParams.delete("limit");
-
-      workerUrl.searchParams.set("url", apiUrl.toString());
-      if (limit !== null) {
-        workerUrl.searchParams.set("limit", limit);
-      }
-
-      const response = await fetch(workerUrl.toString(), {
-        method: "GET",
-        headers: { Accept: "application/json" },
-        cache: "no-store"
+      // Fetch through the authenticated Supabase Edge Function. The function
+      // performs the upstream request server-side, avoiding browser CORS and
+      // replacing the former Cloudflare Worker.
+      if (!supabaseClient) throw new Error("Supabase is not configured.");
+      const { data: json, error } = await supabaseClient.functions.invoke("pawchive-proxy", {
+        body: { url: lastApiUrl }
       });
-      if (!response.ok) throw new Error(`The API returned HTTP ${response.status} ${response.statusText}.`);
-      const type = response.headers.get("content-type") || "";
-      const body = await response.text();
-      let json;
-      try { json=JSON.parse(body); } catch { throw new Error(type.includes("text/html") || /^\s*</.test(body) ? "The URL returned HTML instead of JSON. Paste the API endpoint, not a website page." : "The response was not valid JSON."); }
+      if (error) {
+        let detail = error.message || "Supabase proxy request failed.";
+        // FunctionsHttpError may include the upstream/function response body.
+        try {
+          const response = error.context;
+          if (response && typeof response.clone === "function") {
+            const payload = await response.clone().json();
+            if (payload?.error) detail = payload.error;
+          }
+        } catch {}
+        throw new Error(detail);
+      }
+      if (json == null) throw new Error("The Supabase proxy returned an empty response.");
       const array=extractArray(json);
       const normalized=array.map((item,i)=>normalizePost(item,i,lastApiUrl)).filter(Boolean);
       if(token!==loadToken)return;
@@ -436,7 +431,7 @@
     } catch(err) {
       if(token!==loadToken)return;
       const msg=err instanceof TypeError || /fetch|network|cors/i.test(err.message||"")
-        ? "Could not reach the API proxy. Check that the Cloudflare Worker is deployed and accepts a ?url= parameter."
+        ? "Could not reach the Supabase Pawchive proxy. Check that the pawchive-proxy Edge Function is deployed and that you are signed in."
         : (err.message || "Something went wrong while loading the feed.");
       showNotice(msg, "error");
       if(!quiet && posts.length===0) { els.empty.hidden=false; }

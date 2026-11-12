@@ -94,3 +94,26 @@ Upload `index.html`, `styles.css`, `app.js`, `README.md`, and the `supabase` dir
 - Temporary video URLs can expire; refreshing the relevant feed updates them as before.
 - The function includes basic validation but does not implement a custom distributed rate limiter. For a public deployment, monitor Auth/function abuse and configure suitable rate limiting or abuse protection before sharing it widely.
 - Username-only login uses a private username-to-Auth-user mapping. Do not add public RLS policies to the `usernames` table.
+
+
+## Supabase Pawchive proxy (replaces Cloudflare Worker)
+
+The site now calls the `pawchive-proxy` Supabase Edge Function instead of the Cloudflare Worker. The function requires a valid signed-in Supabase session, restricts target URLs to HTTPS Pawchive hosts, forwards the API request, and returns JSON. It does not use your Supabase secret/service key.
+
+### Deploy without the Supabase CLI
+
+1. Open your project dashboard: https://supabase.com/dashboard/project/hsahfshjaqldddatsqsx/functions
+2. Choose **Deploy a new function** → **Via Editor**.
+3. Name it exactly `pawchive-proxy`.
+4. Replace the starter code with the complete contents of `supabase/functions/pawchive-proxy/index.ts` from this project.
+5. Deploy the function.
+6. Open the deployed function's details/settings and turn **Verify JWT** off if the dashboard exposes that toggle. The function validates the user's bearer token itself by calling Supabase Auth; this avoids the gateway's legacy JWT verifier rejecting newer publishable-key projects. Do not remove the in-function session validation.
+7. No Supabase secret key is required for this proxy. `SUPABASE_URL` is provided by the Edge Function runtime, and `supabase-js` supplies the publishable key in the `apikey` request header.
+
+The function URL is `https://hsahfshjaqldddatsqsx.supabase.co/functions/v1/pawchive-proxy`. The Nightwave frontend calls it through `supabase.functions.invoke`, which sends the current user's session. The previous Cloudflare Worker URL is no longer used.
+
+### Test
+
+Sign in to Nightwave, then load one of your Pawchive API URLs. If it fails, open **Edge Functions → pawchive-proxy → Invocations/Logs**. A Pawchive `403` returned by the function means Pawchive is also rejecting Supabase's outbound request; changing proxy providers will not solve a broader upstream restriction. A `401` means the Nightwave session could not be validated.
+
+The function only allows hostnames equal to `pawchive.pw` or ending in `.pawchive.pw`. If your actual API endpoint uses a different Pawchive-owned hostname, update that hostname check in the function before deploying.

@@ -13,7 +13,7 @@
     sort:$("sortSelect"), grid:$("videoGrid"), empty:$("emptyState"), noResults:$("noResults"),
     resultCount:$("resultCount"), historySection:$("history"), historyGrid:$("historyGrid"),
     historyCount:$("historyCount"), clearHistory:$("clearHistoryBtn"), clearLibrary:$("clearLibraryBtn"), postImage:$("postImage"), modal:$("playerModal"),
-    playerShell:$("playerShell"), playerDialog:$("playerModal").querySelector(".player-dialog"), video:$("video"), playerTitle:$("playerTitle"),
+    playerShell:$("playerShell"), playerDialog:$("playerModal").querySelector(".player-dialog"), video:$("video"), playerTitle:$("playerTitle"), fullscreenTitle:$("fullscreenTitle"),
     playerDescription:$("playerDescription"), playerDate:$("playerDate"), playerLoading:$("playerLoading"),
     playerError:$("playerError"), playBtn:$("playBtn"), backBtn:$("backBtn"), forwardBtn:$("forwardBtn"), previousVideoBtn:$("previousVideoBtn"), nextVideoBtn:$("nextVideoBtn"),
     timeline:$("timelineTrack"), timelineFill:$("timelineFill"), timelineKnob:$("timelineKnob"),
@@ -484,7 +484,7 @@
   }
   function openPostViewer(post) {
     els.playerDialog.classList.add("image-mode");
-    currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
+    currentPost=post; els.playerTitle.textContent=post.title; els.fullscreenTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.hidden=true; els.postImage.hidden=false; els.postImage.src=post.thumbnail || ""; els.postImage.alt=post.title; els.playerLoading.hidden=true; els.playerError.hidden=true;
   }
   const QUALITY_KEY = "nightwave.videoQuality.v1";
@@ -512,7 +512,7 @@
     if(!post.videoUrl){openPostViewer(post);return;}
     els.playerDialog.classList.remove("image-mode");
     els.video.hidden=false; els.postImage.hidden=true; els.postImage.removeAttribute("src"); els.playerError.hidden=true;
-    currentPost=post; els.playerTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided.";
+    currentPost=post; els.playerTitle.textContent=post.title; els.fullscreenTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided.";
     els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open"); updatePlayerNavigation();
     els.playerError.hidden=true; els.playerLoading.hidden=false; els.playerLoading.querySelector("span").textContent="Preparing stream…";
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.playbackRate=Number(els.speed.value)||1;

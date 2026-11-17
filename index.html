@@ -75,8 +75,10 @@
     </section>
 
     <section id="library" class="section">
-      <div class="section-heading"><div><div class="section-kicker">THE COLLECTION</div><h2 id="libraryTitle">Your library <span class="heading-count" id="resultCount"></span></h2></div><div class="library-actions"><button id="clearLibraryBtn" class="text-btn" type="button">Clear library</button><button id="refreshBtn" class="secondary-btn" type="button" disabled><span class="refresh-icon">↻</span> Refresh feeds</button></div></div>
+      <div class="section-heading"><div><div class="section-kicker">THE COLLECTION</div><h2 id="libraryTitle">Your library <span class="heading-count" id="resultCount"></span></h2></div><div class="library-actions"><button id="playPlaylistBtn" class="secondary-btn" type="button" hidden>▶ Play playlist</button><button id="managePlaylistBtn" class="text-btn" type="button" hidden>Playlist options</button><button id="clearLibraryBtn" class="text-btn" type="button">Clear library</button><button id="refreshBtn" class="secondary-btn" type="button" disabled><span class="refresh-icon">↻</span> Refresh feeds</button></div></div>
       <div id="toolbar" class="toolbar" hidden>
+        <label class="select-wrap collection-select"><span class="sr-only">Choose library or playlist</span><select id="viewSelect" aria-label="Choose library or playlist"><option value="library">All posts</option></select></label>
+        <button id="createPlaylistBtn" class="secondary-btn create-playlist-btn" type="button">＋ Playlist</button>
         <label class="searchbox"><span>⌕</span><input id="searchInput" type="search" placeholder="Search titles, descriptions, tags…" aria-label="Search videos"></label>
         <label class="select-wrap"><span class="sr-only">Sort videos</span><select id="sortSelect"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option></select></label>
       </div>

@@ -93,3 +93,24 @@ body.auth-required>header,body.auth-required>main,body.auth-required>footer,body
 .player-dialog:fullscreen .fullscreen-title,.player-dialog:-webkit-full-screen .fullscreen-title{display:none;position:absolute;top:0;left:0;right:0;z-index:19;padding:28px 32px 42px;color:#fff;font-size:clamp(16px,2vw,25px);font-weight:700;line-height:1.3;letter-spacing:-.3px;text-shadow:0 2px 12px #000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;background:linear-gradient(rgba(0,0,0,.72),transparent)}
 .player-dialog:fullscreen.controls-visible .fullscreen-title,.player-dialog:-webkit-full-screen.controls-visible .fullscreen-title{display:block}
 @media(max-width:600px){.player-dialog:fullscreen .fullscreen-title,.player-dialog:-webkit-full-screen .fullscreen-title{padding:20px 18px 34px;font-size:16px}}
+
+
+/* Compact playlist controls: selector stays in the library toolbar; card actions appear on hover. */
+.collection-select select{min-width:125px}
+.create-playlist-btn{white-space:nowrap;padding:10px 12px;font-size:10px}
+.video-card{position:relative}
+.playlist-add-wrap{position:absolute;top:8px;right:8px;z-index:8}
+.playlist-add-btn{width:30px;height:30px;border:1px solid #ffffff45;border-radius:8px;background:#09080dcc;color:#fff;font-size:20px;line-height:1;display:grid;place-items:center;opacity:0;transform:translateY(-3px);transition:opacity .16s,transform .16s,background .16s;cursor:pointer;backdrop-filter:blur(8px)}
+.video-card:hover .playlist-add-btn,.video-card:focus-within .playlist-add-btn,.playlist-add-btn:focus-visible{opacity:1;transform:none}
+.playlist-add-btn:hover{background:#8d6bc5;color:#fff;border-color:#c9b2f5}
+.playlist-picker{position:absolute;top:36px;right:0;width:205px;max-height:260px;overflow:auto;padding:8px;border:1px solid #393143;border-radius:10px;background:#15131c;box-shadow:0 12px 35px #000b;display:flex;flex-direction:column;gap:2px;z-index:30}
+.playlist-picker[hidden]{display:none}
+.playlist-picker-option{display:flex;align-items:center;gap:9px;padding:8px;border-radius:6px;color:#e7e1ef;font-size:11px;cursor:pointer}
+.playlist-picker-option:hover{background:#ffffff0c}
+.playlist-picker-option input{accent-color:#b18ae8;margin:0}
+.playlist-picker-create{border:0;border-top:1px solid #302a39;margin-top:5px;padding:10px 7px 5px;text-align:left;background:transparent;color:#c9b2f5;font-size:11px;cursor:pointer}
+.playlist-picker-create:hover{color:#fff}
+.playlist-picker-empty{padding:9px;color:#938b9d;font-size:10px}
+.library-actions [hidden]{display:none!important}
+@media(hover:none){.playlist-add-btn{opacity:1;transform:none;width:27px;height:27px}.playlist-picker{width:min(205px,calc(100vw - 50px))}}
+@media(max-width:760px){.toolbar{flex-wrap:wrap}.collection-select{flex:0 0 auto}.create-playlist-btn{padding:9px}.library-actions{max-width:100%}}

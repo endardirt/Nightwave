@@ -10,7 +10,7 @@
     apiForm:$("apiForm"), apiUrl:$("apiUrl"), loadBtn:$("loadBtn"), refreshBtn:$("refreshBtn"),
     jsonInput:$("jsonInput"), loadJsonBtn:$("loadJsonBtn"),
     notice:$("notice"), loading:$("loading"), toolbar:$("toolbar"), search:$("searchInput"),
-    sort:$("sortSelect"), grid:$("videoGrid"), empty:$("emptyState"), noResults:$("noResults"),
+    sort:$("sortSelect"), view:$("viewSelect"), createPlaylist:$("createPlaylistBtn"), managePlaylist:$("managePlaylistBtn"), playPlaylist:$("playPlaylistBtn"), libraryTitle:$("libraryTitle"), grid:$("videoGrid"), empty:$("emptyState"), noResults:$("noResults"),
     resultCount:$("resultCount"), historySection:$("history"), historyGrid:$("historyGrid"),
     historyCount:$("historyCount"), clearHistory:$("clearHistoryBtn"), clearLibrary:$("clearLibraryBtn"), postImage:$("postImage"), modal:$("playerModal"),
     playerShell:$("playerShell"), playerDialog:$("playerModal").querySelector(".player-dialog"), video:$("video"), playerTitle:$("playerTitle"), fullscreenTitle:$("fullscreenTitle"),
@@ -23,8 +23,9 @@
   const HISTORY_KEY = "nightwave.watchHistory.v1";
   const LAST_API_KEY = "nightwave.lastApiUrl.v1";
   const LIBRARY_KEY = "nightwave.library.v1";
+  const PLAYLISTS_KEY = "nightwave.playlists.v1";
   const MAX_HISTORY = 30;
-  let posts = [], lastApiUrl = "", currentPost = null, hls = null, loadToken = 0;
+  let posts = [], playlists = [], activeView = "library", playerContext = {type:"library"}, lastApiUrl = "", currentPost = null, hls = null, loadToken = 0;
   let seekDrag = false, holdTimer = null, holdingFast = false, spaceDown = false, spaceHoldTimer = null;
 
   function safeStorageGet(key, fallback) {
@@ -34,18 +35,19 @@
     try { localStorage.setItem(key, value); scheduleCloudSync(); return true; } catch { showNotice("Your browser storage is full or disabled. Watch progress may not be saved.", "error"); return false; }
   }
   function currentLocalSnapshot() {
-    let library=[], history=[], apiUrls=[];
+    let library=[], history=[], apiUrls=[], playlists=[];
     try { const x=JSON.parse(localStorage.getItem(LIBRARY_KEY)||"[]"); if(Array.isArray(x))library=x; } catch {}
     try { const x=JSON.parse(localStorage.getItem(HISTORY_KEY)||"[]"); if(Array.isArray(x))history=x; } catch {}
     try { apiUrls=(localStorage.getItem(LAST_API_KEY)||"").split(/\n+/).map(x=>x.trim()).filter(Boolean); } catch {}
-    return {library,history,apiUrls};
+    try { const x=JSON.parse(localStorage.getItem(PLAYLISTS_KEY)||"[]"); if(Array.isArray(x))playlists=x; } catch {}
+    return {library,history,apiUrls,playlists};
   }
   function scheduleCloudSync() {
     if(!cloudReady || !cloudUser || !supabaseClient) return;
     clearTimeout(cloudSaveTimer);
     cloudSaveTimer=setTimeout(async()=>{
       const snap=currentLocalSnapshot();
-      const {error}=await supabaseClient.from("user_data").upsert({user_id:cloudUser.id,api_urls:snap.apiUrls,library:snap.library,watch_history:snap.history,updated_at:new Date().toISOString()},{onConflict:"user_id"});
+      const {error}=await supabaseClient.from("user_data").upsert({user_id:cloudUser.id,api_urls:snap.apiUrls,library:snap.library,watch_history:snap.history,playlists:snap.playlists,updated_at:new Date().toISOString()},{onConflict:"user_id"});
       if(error) showNotice(`Cloud sync failed: ${error.message}. Your current browser copy remains available.`,"error");
     },700);
   }
@@ -67,15 +69,16 @@
   }
   async function restoreCloudData(user) {
     cloudUser=user; cloudReady=false;
-    const {data,error}=await supabaseClient.from("user_data").select("api_urls,library,watch_history").eq("user_id",user.id).maybeSingle();
+    const {data,error}=await supabaseClient.from("user_data").select("api_urls,library,watch_history,playlists").eq("user_id",user.id).maybeSingle();
     if(error) throw error;
     if(data) {
       safeStorageSet(LIBRARY_KEY,JSON.stringify(Array.isArray(data.library)?data.library:[]));
       safeStorageSet(HISTORY_KEY,JSON.stringify(Array.isArray(data.watch_history)?data.watch_history:[]));
+      safeStorageSet(PLAYLISTS_KEY,JSON.stringify(Array.isArray(data.playlists)?data.playlists:[]));
       safeStorageSet(LAST_API_KEY,(Array.isArray(data.api_urls)?data.api_urls:[]).join("\n"));
     } else {
       const snap=currentLocalSnapshot();
-      const {error:insertError}=await supabaseClient.from("user_data").insert({user_id:user.id,api_urls:snap.apiUrls,library:snap.library,watch_history:snap.history});
+      const {error:insertError}=await supabaseClient.from("user_data").insert({user_id:user.id,api_urls:snap.apiUrls,library:snap.library,watch_history:snap.history,playlists:snap.playlists});
       if(insertError) throw insertError;
     }
     cloudReady=true;
@@ -83,10 +86,11 @@
     $("authGate").hidden=true;
     $("accountLabel").innerHTML="<span></span> "+(user.user_metadata?.username||"CLOUD LIBRARY");
     const savedLibrary=currentLocalSnapshot().library;
+    playlists=getPlaylists();
     posts=Array.isArray(savedLibrary)?savedLibrary.filter(p=>p&&typeof p.title==="string"):[];
     const savedUrl= safeStorageGet(LAST_API_KEY,"");
     if(savedUrl){const urls=savedUrl.split(/\n+/).filter(Boolean);els.apiUrl.value=urls.join("\n");lastApiUrl=urls[0]||"";await loadFeeds(urls,{quiet:true});}
-    renderHistory();renderPosts();
+    renderHistory();renderPlaylistSelector();renderPosts();
   }
   async function initializeAuth() {
     if(!supabaseClient){showAuthError("Supabase client failed to load. Refresh the page and try again.");return;}
@@ -117,6 +121,38 @@
 
   function getHistory() {
     try { const parsed = JSON.parse(safeStorageGet(HISTORY_KEY, "[]")); return Array.isArray(parsed) ? parsed.filter(x => x && typeof x.key === "string") : []; } catch { return []; }
+  }
+  function getPlaylists() {
+    try { const parsed=JSON.parse(safeStorageGet(PLAYLISTS_KEY,"[]")); return Array.isArray(parsed) ? parsed.filter(p=>p && typeof p.id==="string" && typeof p.name==="string" && Array.isArray(p.postKeys)) : []; } catch { return []; }
+  }
+  function savePlaylists() {
+    safeStorageSet(PLAYLISTS_KEY,JSON.stringify(playlists));
+    renderPlaylistSelector();
+    renderPosts();
+  }
+  function activePlaylist() { return playlists.find(p=>p.id===activeView) || null; }
+  function createPlaylist(name, initialPost=null) {
+    const clean=String(name||"").trim(); if(!clean) return null;
+    const playlist={id:(crypto.randomUUID ? crypto.randomUUID() : `pl-${Date.now()}-${Math.random().toString(36).slice(2,8)}`),name:clean.slice(0,80),createdAt:new Date().toISOString(),postKeys:[],sort:"newest"};
+    if(initialPost) playlist.postKeys.push(postKey(initialPost));
+    playlists.push(playlist); activeView=playlist.id; savePlaylists(); return playlist;
+  }
+  function addPostToPlaylist(post, playlistId, shouldAdd) {
+    const playlist=playlists.find(p=>p.id===playlistId); if(!playlist) return;
+    const key=postKey(post); const has=playlist.postKeys.includes(key);
+    if(shouldAdd && !has) playlist.postKeys.push(key);
+    if(!shouldAdd && has) playlist.postKeys=playlist.postKeys.filter(k=>k!==key);
+    safeStorageSet(PLAYLISTS_KEY,JSON.stringify(playlists));
+    renderPlaylistSelector();
+    renderPosts();
+  }
+  function renderPlaylistSelector() {
+    if(!els.view) return;
+    const selected=activeView; els.view.replaceChildren();
+    const all=document.createElement("option"); all.value="library"; all.textContent="All posts"; els.view.appendChild(all);
+    playlists.forEach(p=>{const option=document.createElement("option");option.value=p.id;option.textContent=`${p.name} (${p.postKeys.length})`;els.view.appendChild(option);});
+    els.view.value=playlists.some(p=>p.id===selected)?selected:"library";
+    if(!playlists.some(p=>p.id===selected)) activeView="library";
   }
   function saveHistory(history) { safeStorageSet(HISTORY_KEY, JSON.stringify(history.slice(0, MAX_HISTORY))); renderHistory(); }
   function persistLibrary() {
@@ -199,7 +235,7 @@
   function updateHistory(post, patch) {
     if (!post) return;
     const key = postKey(post), old = getHistory().find(x => x.key === key) || {};
-    const item = {...old, key, id:post.id, title:post.title, thumbnail:post.thumbnail, videoUrl:post.videoUrl, description:post.description, published:post.published, ...patch, updated:Date.now()};
+    const item = {...old, key, id:post.id, title:post.title, thumbnail:post.thumbnail, videoUrl:post.videoUrl, description:post.description, published:post.published, lastPlaylistId:playerContext.type==="playlist"?playerContext.playlistId:(old.lastPlaylistId||null), ...patch, updated:Date.now()};
     const next = [item, ...getHistory().filter(x => x.key !== key)].slice(0, MAX_HISTORY);
     saveHistory(next);
   }
@@ -311,7 +347,7 @@
     return wrap;
   }
   function createVideoCard(post) {
-    const card = document.createElement("article"); card.className = "video-card"; card.tabIndex = 0; card.setAttribute("role","button");
+    const card = document.createElement("article"); card.className = "video-card"; card.dataset.postKey=postKey(post); card.tabIndex = 0; card.setAttribute("role","button");
     card.setAttribute("aria-label", `${post.hasVideo ? "Play" : "View"} ${post.title}`);
     card.appendChild(createThumb(post, getHistoryItem(post)));
     const title = document.createElement("h3"); title.className = "card-title"; title.textContent = post.title; card.appendChild(title);
@@ -320,15 +356,19 @@
     const date = document.createElement("span"); date.className = "card-date"; date.textContent = formatDate(post.published); meta.appendChild(date);
     if (post.tags) { const dot = document.createElement("span"); dot.className = "video-dot"; meta.appendChild(dot); const tag = document.createElement("span"); tag.className = "card-date"; tag.textContent = post.tags.split(/\s+/).filter(Boolean).slice(0,2).join(" · "); tag.style.overflow="hidden"; tag.style.textOverflow="ellipsis"; tag.style.whiteSpace="nowrap"; meta.appendChild(tag); }
     card.appendChild(meta);
-    const open = () => post.hasVideo ? openPlayer(post) : openPostViewer(post);
-    card.addEventListener("click", open); card.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    const addWrap=document.createElement("div");addWrap.className="playlist-add-wrap";
+    const addBtn=document.createElement("button");addBtn.type="button";addBtn.className="playlist-add-btn";addBtn.textContent="＋";addBtn.title="Add to playlist";addBtn.setAttribute("aria-label",`Add ${post.title} to playlist`);
+    const picker=document.createElement("div");picker.className="playlist-picker";picker.hidden=true;
+    if(playlists.length===0){const empty=document.createElement("div");empty.className="playlist-picker-empty";empty.textContent="No playlists yet";picker.appendChild(empty);}
+    playlists.forEach(playlist=>{const label=document.createElement("label");label.className="playlist-picker-option";const check=document.createElement("input");check.type="checkbox";check.checked=playlist.postKeys.includes(postKey(post));check.dataset.playlistId=playlist.id;const name=document.createElement("span");name.textContent=playlist.name;label.append(check,name);picker.appendChild(label);});
+    const create=document.createElement("button");create.type="button";create.className="playlist-picker-create";create.textContent="＋ Create playlist";picker.appendChild(create);
+    addWrap.append(addBtn,picker);card.appendChild(addWrap);
+    const open = () => post.hasVideo ? openPlayer(post, {type:activeView==="library"?"library":"playlist",playlistId:activeView==="library"?null:activeView}) : openPostViewer(post);
+    card.addEventListener("click", e => { if(e.target.closest(".playlist-add-wrap,button,input,label")) return; open(); }); card.addEventListener("keydown", e => { if(e.target.closest(".playlist-add-wrap,button,input,label")) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
     return card;
   }
-  function filteredPosts() {
-    const query = els.search.value.trim().toLowerCase();
-    const filtered = posts.filter(p => !query || [p.title,p.description,p.tags,p.id].some(v => String(v||"").toLowerCase().includes(query)));
-    const sort = els.sort.value;
-    filtered.sort((a,b) => {
+  function sortPostList(list, sort) {
+    return list.sort((a,b) => {
       if (sort === "title-asc") return a.title.localeCompare(b.title);
       if (sort === "title-desc") return b.title.localeCompare(a.title);
       const da = new Date(a.published).getTime(), db = new Date(b.published).getTime();
@@ -336,15 +376,36 @@
       if (!Number.isFinite(da)) return 1; if (!Number.isFinite(db)) return -1;
       return sort === "oldest" ? da-db : db-da;
     });
-    return filtered;
+  }
+  function filteredPosts(context={type:activeView==="library"?"library":"playlist",playlistId:activeView==="library"?null:activeView}) {
+    const query = els.search.value.trim().toLowerCase();
+    let filtered = posts.filter(p => !query || [p.title,p.description,p.tags,p.id].some(v => String(v||"").toLowerCase().includes(query)));
+    const playlistId=context.type==="playlist"?context.playlistId:null;
+    const playlist=playlistId?playlists.find(p=>p.id===playlistId):null;
+    if(playlist) { const keys=new Set(playlist.postKeys); filtered=filtered.filter(p=>keys.has(postKey(p))); }
+    const sort=playlist?(playlist.sort||"newest"):els.sort.value;
+    return sortPostList(filtered,sort);
   }
   function renderPosts() {
-    const filtered = filteredPosts(); els.grid.replaceChildren();
+    const playlist=activePlaylist();
+    const filtered=filteredPosts(); els.grid.replaceChildren();
     filtered.forEach(p => els.grid.appendChild(createVideoCard(p)));
-    els.resultCount.textContent = posts.length ? `(${filtered.length}${filtered.length !== posts.length ? ` of ${posts.length}` : ""})` : "";
-    els.empty.hidden = posts.length > 0;
-    els.noResults.hidden = posts.length === 0 || filtered.length > 0;
-    els.toolbar.hidden = posts.length === 0;
+    els.libraryTitle.firstChild.textContent=playlist?playlist.name:"Your library ";
+    els.resultCount.textContent=playlist?`(${filtered.length} posts)`:(posts.length?`(${filtered.length}${filtered.length!==posts.length?` of ${posts.length}`:""})`:"");
+    els.empty.hidden=posts.length>0;
+    if(posts.length===0){els.empty.querySelector("h3").textContent="Your next watch is out there.";els.empty.querySelector("p").textContent="Paste one or more API URLs above, one per line, to load videos and posts.";}
+    if(playlist && filtered.length===0 && playlist.postKeys.length===0){els.empty.hidden=false;els.empty.querySelector("h3").textContent="This playlist is empty.";els.empty.querySelector("p").textContent="Add posts using the ＋ button on any library card.";}
+    els.noResults.hidden=posts.length===0 || filtered.length>0 || (playlist && playlist.postKeys.length===0);
+    els.toolbar.hidden=posts.length===0;
+    els.clearLibrary.hidden=!!playlist;
+    els.managePlaylist.hidden=!playlist;
+    els.playPlaylist.hidden=!playlist;
+    const titleKicker=document.querySelector("#library .section-kicker"); if(titleKicker)titleKicker.textContent=playlist?"YOUR PLAYLIST":"THE COLLECTION";
+    if(els.sort){
+      const titleOptions=[...els.sort.options].filter(o=>o.value.startsWith("title-"));
+      titleOptions.forEach(o=>{o.hidden=!!playlist;o.disabled=!!playlist;});
+      if(playlist){els.sort.value=playlist.sort||"newest";} else if(![...els.sort.options].some(o=>o.value===els.sort.value&&!o.hidden)){els.sort.value="newest";}
+    }
     updatePlayerNavigation();
   }
   // Delegate history deletion from the grid in capture phase so it cannot bubble to a card opener.
@@ -370,7 +431,7 @@
       const title=document.createElement("h3");title.className="card-title";title.textContent=post.title;info.appendChild(title);
       const time=document.createElement("div");time.className="history-time";time.textContent=item && item.duration>0 ? `Resume at ${formatTime(item.time||0)} · ${Math.round((item.time||0)/item.duration*100)}%` : "Recently watched";info.appendChild(time);
       card.appendChild(info);
-      const open=()=>openPlayer(post);card.addEventListener("click",e=>{if(e.target.closest("button.remove-history"))return;open();});card.addEventListener("keydown",e=>{if(e.target.closest && e.target.closest("button.remove-history"))return;if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
+      const open=()=>{const source=item&&item.lastPlaylistId&&playlists.some(p=>p.id===item.lastPlaylistId&&p.postKeys.includes(item.key))?{type:"playlist",playlistId:item.lastPlaylistId}:{type:"library"};openPlayer(post,source);};card.addEventListener("click",e=>{if(e.target.closest("button.remove-history"))return;open();});card.addEventListener("keydown",e=>{if(e.target.closest && e.target.closest("button.remove-history"))return;if(e.key==="Enter"||e.key===" "){e.preventDefault();open();}});
       els.historyGrid.appendChild(card);
     });
   }
@@ -455,25 +516,24 @@
     if (successes) showNotice(`Loaded and merged posts from ${successes} of ${unique.length} feed${unique.length===1?"":"s"}.`, "success");
     else if (!quiet) showNotice("Could not load any feeds. Check the URLs or paste the JSON responses instead if CORS blocks them.", "error");
   }
-  function displayedVideoPosts() { return filteredPosts().filter(post => !!post.videoUrl); }
+  function displayedVideoPosts(context=playerContext) { return filteredPosts(context).filter(post => !!post.videoUrl); }
   function updatePlayerNavigation() {
     if (!els.previousVideoBtn || !els.nextVideoBtn) return;
-    const list = displayedVideoPosts();
-    const index = currentPost ? list.findIndex(post => postIdentity(post) === postIdentity(currentPost)) : -1;
-    const canNavigate = index >= 0 && list.length > 1;
-    els.previousVideoBtn.disabled = !canNavigate;
-    els.nextVideoBtn.disabled = !canNavigate;
-    els.previousVideoBtn.title = index <= 0 ? "Previous video (start of current list)" : "Previous video";
-    els.nextVideoBtn.title = index < 0 || index >= list.length - 1 ? "Next video (end of current list)" : "Next video";
+    const list=displayedVideoPosts(playerContext);
+    const index=currentPost?list.findIndex(post=>postIdentity(post)===postIdentity(currentPost)):-1;
+    els.previousVideoBtn.disabled=index<=0;
+    els.nextVideoBtn.disabled=index<0||index>=list.length-1;
+    els.previousVideoBtn.title=index<=0?"Previous video (start of current list)":"Previous video";
+    els.nextVideoBtn.title=index<0||index>=list.length-1?"Next video (end of current list)":"Next video";
   }
   function stepDisplayedVideo(direction) {
-    const list = displayedVideoPosts();
-    if (!currentPost || !list.length) return;
-    const index = list.findIndex(post => postIdentity(post) === postIdentity(currentPost));
-    if (index < 0) return;
-    const nextIndex = index + direction;
-    if (nextIndex < 0 || nextIndex >= list.length) return;
-    openPlayer(list[nextIndex]);
+    const list=displayedVideoPosts(playerContext);
+    if(!currentPost||!list.length)return;
+    const index=list.findIndex(post=>postIdentity(post)===postIdentity(currentPost));
+    if(index<0)return;
+    const nextIndex=index+direction;
+    if(nextIndex<0||nextIndex>=list.length)return;
+    openPlayer(list[nextIndex],playerContext);
   }
   function destroyHls() { if(hls){try{hls.destroy();}catch{}hls=null;} }
   function getSavedItem(post) { return getHistory().find(x=>x.key===postKey(post)); }
@@ -484,7 +544,7 @@
   }
   function openPostViewer(post) {
     els.playerDialog.classList.add("image-mode");
-    currentPost=post; els.playerTitle.textContent=post.title; els.fullscreenTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
+    currentPost=post; playerContext=activeView==="library"?{type:"library"}:{type:"playlist",playlistId:activeView}; els.playerTitle.textContent=post.title; els.fullscreenTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided."; els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open");
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.hidden=true; els.postImage.hidden=false; els.postImage.src=post.thumbnail || ""; els.postImage.alt=post.title; els.playerLoading.hidden=true; els.playerError.hidden=true;
   }
   const QUALITY_KEY = "nightwave.videoQuality.v1";
@@ -508,11 +568,11 @@
       else instance.currentLevel = -1;
     }
   }
-  function openPlayer(post) {
+  function openPlayer(post, context={type:"library"}) {
     if(!post.videoUrl){openPostViewer(post);return;}
     els.playerDialog.classList.remove("image-mode");
     els.video.hidden=false; els.postImage.hidden=true; els.postImage.removeAttribute("src"); els.playerError.hidden=true;
-    currentPost=post; els.playerTitle.textContent=post.title; els.fullscreenTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided.";
+    currentPost=post; playerContext=context&&context.type==="playlist"&&playlists.some(p=>p.id===context.playlistId)?{type:"playlist",playlistId:context.playlistId}:{type:"library"}; els.playerTitle.textContent=post.title; els.fullscreenTitle.textContent=post.title; els.playerDescription.textContent=post.description || "No description provided.";
     els.playerDate.textContent=formatDate(post.published); els.modal.hidden=false; document.body.classList.add("modal-open"); updatePlayerNavigation();
     els.playerError.hidden=true; els.playerLoading.hidden=false; els.playerLoading.querySelector("span").textContent="Preparing stream…";
     destroyHls(); els.video.pause(); els.video.removeAttribute("src"); els.video.load(); els.video.playbackRate=Number(els.speed.value)||1;
@@ -559,10 +619,23 @@
   async function toggleFullscreen(){try{if(document.fullscreenElement)await document.exitFullscreen();else if(els.playerDialog?.requestFullscreen)await els.playerDialog.requestFullscreen();else if(els.video.webkitEnterFullscreen)els.video.webkitEnterFullscreen();}catch{showNotice("Fullscreen is unavailable in this browser.","error");}}
   function enableFast(){if(!els.video.paused&&!holdingFast){holdingFast=true;els.video.playbackRate=2;els.speedIndicator.classList.add("visible");}}
   function disableFast(){if(holdingFast){holdingFast=false;els.video.playbackRate=Number(els.speed.value)||1;els.speedIndicator.classList.remove("visible");}}
+  renderPlaylistSelector();
+  els.view?.addEventListener("change",()=>{activeView=els.view.value;renderPosts();});
+  els.createPlaylist?.addEventListener("click",()=>{const name=prompt("Name your playlist:");if(name&&name.trim()){const playlist=createPlaylist(name);if(playlist)showNotice(`Created playlist “${playlist.name}”.`,"success");}});
+  els.managePlaylist?.addEventListener("click",()=>{const playlist=activePlaylist();if(!playlist)return;const action=prompt(`Playlist: ${playlist.name}\nType R to rename or D to delete.`);if(!action)return;if(action.trim().toLowerCase()==="r"){const name=prompt("New playlist name:",playlist.name);if(name&&name.trim()){playlist.name=name.trim().slice(0,80);savePlaylists();}}else if(action.trim().toLowerCase()==="d"&&confirm(`Delete playlist “${playlist.name}”? Posts in your library and watch history will not be deleted.`)){playlists=playlists.filter(p=>p.id!==playlist.id);if(playerContext.type==="playlist"&&playerContext.playlistId===playlist.id)playerContext={type:"library"};activeView="library";savePlaylists();}});
+  els.playPlaylist?.addEventListener("click",()=>{const first=displayedVideoPosts({type:"playlist",playlistId:activeView})[0];if(first)openPlayer(first,{type:"playlist",playlistId:activeView});});
+  els.grid.addEventListener("click",e=>{
+    const addButton=e.target.closest(".playlist-add-btn");
+    if(addButton){e.preventDefault();e.stopPropagation();const wrap=addButton.closest(".playlist-add-wrap");const picker=wrap.querySelector(".playlist-picker");document.querySelectorAll(".playlist-picker:not([hidden])").forEach(menu=>{if(menu!==picker)menu.hidden=true;});picker.hidden=!picker.hidden;return;}
+    const createButton=e.target.closest(".playlist-picker-create");
+    if(createButton){e.preventDefault();e.stopPropagation();const card=createButton.closest(".video-card");const post=posts.find(p=>postKey(p)===card.dataset.postKey);const name=prompt("Name your playlist:");if(name&&name.trim()&&post){const playlist=createPlaylist(name,post);if(playlist)showNotice(`Created “${playlist.name}” and added the post.`,"success");}return;}
+  });
+  els.grid.addEventListener("change",e=>{const check=e.target.closest(".playlist-picker-option input");if(!check)return;e.stopPropagation();const card=check.closest(".video-card");const post=posts.find(p=>postKey(p)===card.dataset.postKey);if(post)addPostToPlaylist(post,check.dataset.playlistId,check.checked);});
+  document.addEventListener("click",e=>{if(!e.target.closest(".playlist-add-wrap"))document.querySelectorAll(".playlist-picker:not([hidden])").forEach(menu=>menu.hidden=true);});
   els.apiForm.addEventListener("submit",e=>{e.preventDefault();loadFeeds(els.apiUrl.value.split(/\n+/));});
   els.loadJsonBtn.addEventListener("click",()=>loadPastedJson(els.jsonInput.value));
   els.refreshBtn.addEventListener("click",()=>{const saved=safeStorageGet(LAST_API_KEY,"").split(/\n+/).filter(Boolean);if(saved.length)loadFeeds(saved);});
-  els.search.addEventListener("input",renderPosts);els.sort.addEventListener("change",renderPosts);
+  els.search.addEventListener("input",renderPosts);els.sort.addEventListener("change",()=>{const playlist=activePlaylist();if(playlist){playlist.sort=els.sort.value;safeStorageSet(PLAYLISTS_KEY,JSON.stringify(playlists));}renderPosts();});
   els.clearHistory.addEventListener("click",()=>{if(confirm("Clear all locally saved watch history and resume positions?")){safeStorageSet(HISTORY_KEY,"[]");renderHistory();renderPosts();}});
   els.clearLibrary.addEventListener("click",()=>{if(confirm("Clear every post from your saved library? This will not delete watch history or saved API URLs.")){posts=[];safeStorageSet(LIBRARY_KEY,"[]");renderPosts();showNotice("Your library has been cleared.","success");}});
   $("brandHome").addEventListener("click",e=>{e.preventDefault();window.scrollTo({top:0,behavior:"smooth"});});

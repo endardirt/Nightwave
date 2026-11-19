@@ -24,7 +24,7 @@
   const LAST_API_KEY = "nightwave.lastApiUrl.v1";
   const LIBRARY_KEY = "nightwave.library.v1";
   const PLAYLISTS_KEY = "nightwave.playlists.v1";
-  const MAX_HISTORY = 30;
+  const MAX_HISTORY = 150;
   let posts = [], playlists = [], activeView = "library", playerContext = {type:"library"}, lastApiUrl = "", currentPost = null, hls = null, loadToken = 0;
   let seekDrag = false, holdTimer = null, holdingFast = false, spaceDown = false, spaceHoldTimer = null;
 
